@@ -314,7 +314,7 @@ def get_account_snapshot(config: FutuConfig | None = None) -> dict[str, Any]:
             "profile": cfg.profile,
             "trd_env": cfg.trd_env_name,
             "acc_id": acc_id,
-            "assets": [_account_to_dict(row) for row in rows],
+            "assets": [_account_to_dict(row, _config_currency(cfg)) for row in rows],
         }
     finally:
         _close(trade_ctx)
@@ -1194,7 +1194,55 @@ def _acc_id_of(row: Mapping[str, Any]) -> int:
         return 0
 
 
-def _account_to_dict(row: Mapping[str, Any]) -> dict[str, Any]:
+#: Trade-market filter to the currency its balances are denominated in.
+#: Only markets whose settlement currency is unambiguous are listed; anything
+#: else resolves to an empty string so the caller can fail instead of guessing.
+_MARKET_CURRENCY = {"HK": "HKD", "US": "USD", "CN": "CNY"}
+
+#: Values Futu returns in place of a currency when it has none to report.
+_NO_CURRENCY = {"", "N/A", "NA", "NONE", "NULL"}
+
+
+def _config_currency(cfg: FutuConfig) -> str:
+    """Currency implied by the connection's own trade-market filter.
+
+    This is read from the connection settings the user supplied, not inferred
+    from the balances themselves.
+
+    Args:
+        cfg: The resolved connector configuration.
+
+    Returns:
+        An ISO currency code, or an empty string when the market filter does
+        not map to a single settlement currency.
+    """
+    return _MARKET_CURRENCY.get(str(cfg.filter_trdmarket or "").upper(), "")
+
+
+def _account_to_dict(row: Mapping[str, Any], fallback_currency: str = "") -> dict[str, Any]:
+    """Normalize one ``accinfo_query`` row.
+
+    Futu reports the literal string ``"N/A"`` for ``currency`` on a
+    multi-currency account, alongside ``"N/A"`` for every per-currency field
+    (``hk_cash``, ``usd_assets``, ...). Passing that through leaves the balance
+    with no usable currency, and the portfolio valuation's ``_to_usd`` returns
+    an unrecognized currency's value unchanged — which reads downstream as a
+    balance already denominated in USD. An HKD account then reports its cash at
+    roughly 7.8x its true USD value, with no error raised anywhere.
+
+    So an absent currency falls back to the one implied by the connection's
+    trade-market filter, and stays empty when that filter does not imply one.
+
+    Args:
+        row: A single row from ``accinfo_query``.
+        fallback_currency: Currency to use when the row reports none.
+
+    Returns:
+        The normalized account mapping.
+    """
+    currency = str(_first(row, ("currency",), "") or "").upper()
+    if currency in _NO_CURRENCY:
+        currency = fallback_currency
     return {
         "power": _first(row, ("power",)),
         "total_assets": _first(row, ("total_assets",)),
@@ -1202,7 +1250,7 @@ def _account_to_dict(row: Mapping[str, Any]) -> dict[str, Any]:
         "market_val": _first(row, ("market_val",)),
         "available_funds": _first(row, ("available_funds",)),
         "securities_assets": _first(row, ("securities_assets",)),
-        "currency": str(_first(row, ("currency",), "") or "").upper(),
+        "currency": currency,
     }
 
 

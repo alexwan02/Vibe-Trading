@@ -694,6 +694,37 @@ def test_futu_trd_env_mapping() -> None:
     assert ft.FutuConfig(profile="live-readonly").trd_env_name == "REAL"
 
 
+def test_futu_account_currency_falls_back_to_market_filter() -> None:
+    """Futu reports ``"N/A"`` for currency on a multi-currency account.
+
+    Passing that through leaves the balance with no usable currency, and
+    ``_to_usd`` returns an unrecognized currency's value unchanged — so an HKD
+    account reported its cash at ~7.8x its true USD value with no error raised.
+    Observed live against a Futu paper account: ``currency``, ``hk_cash``,
+    ``usd_assets`` and every other per-currency field all returned ``"N/A"``
+    while ``cash`` was 549638.99 HKD.
+    """
+    row = {"currency": "N/A", "cash": 549638.99, "total_assets": 600182.99}
+    assert ft._account_to_dict(row, "HKD")["currency"] == "HKD"
+
+
+def test_futu_account_currency_reported_by_broker_wins() -> None:
+    """A currency the broker does report must never be overwritten."""
+    row = {"currency": "HKD", "cash": 1.0}
+    assert ft._account_to_dict(row, "USD")["currency"] == "HKD"
+
+
+def test_futu_config_currency_only_for_unambiguous_markets() -> None:
+    """A market filter that implies no single settlement currency stays empty.
+
+    Guessing one would put the same silent-substitution bug back, one market
+    further down.
+    """
+    assert ft._config_currency(ft.FutuConfig()) == "HKD"
+    assert ft._config_currency(ft.FutuConfig(filter_trdmarket="US")) == "USD"
+    assert ft._config_currency(ft.FutuConfig(filter_trdmarket="FUTURES")) == ""
+
+
 def test_futu_classification() -> None:
     assert FUTU_TOOL_CLASS["place_order"] is ToolClass.WRITE
     assert FUTU_TOOL_CLASS["modify_order"] is ToolClass.WRITE
