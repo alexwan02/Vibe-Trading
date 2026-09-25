@@ -4,7 +4,13 @@ Configuration lives at ``~/.vibe-trading/data-bridge/config.yaml``.
 Each entry maps a symbol to a data file with optional column-name overrides,
 date format, and (for DuckDB) an SQL query.
 
+``invalid_bars`` controls what happens to rows that fail the OHLC structural
+invariants: ``drop`` (default, unchanged behaviour), ``warn`` (keep them and log),
+or ``raise``. It can be set once at the top level and overridden per source.
+
 Example config::
+
+    invalid_bars: warn      # optional; drop (default) | warn | raise
 
     sources:
       - symbol: "AAPL.US"
@@ -22,6 +28,7 @@ Example config::
       - symbol: "BTC-USDT"
         type: parquet
         path: "~/data/btc.parquet"
+        invalid_bars: raise   # overrides the file-level setting for this symbol
 
       - symbol: "MYINDEX"
         type: duckdb
@@ -45,6 +52,19 @@ logger = logging.getLogger(__name__)
 
 _CONFIG_DIR = Path.home() / ".vibe-trading" / "data-bridge"
 _CONFIG_PATH = _CONFIG_DIR / "config.yaml"
+
+# How to handle bars that fail the OHLC structural invariants. Mirrors
+# ``validate_ohlc``'s own ``strategy`` argument; ``drop`` keeps the historical
+# behaviour, so an existing config file is unaffected.
+#
+# Why this needs to be configurable: dropping is silent at the data level. A
+# vendor whose daily ``open`` comes from the opening auction while ``high`` and
+# ``low`` cover the continuous session only will print a handful of bars where
+# ``open`` sits a tick outside the range. Those bars are not corrupt, and a
+# caller reconciling row counts against the source file sees an unexplained
+# shortfall with only an INFO log to go on.
+_INVALID_BAR_STRATEGIES = ("drop", "warn", "raise")
+_DEFAULT_INVALID_BARS = "drop"
 
 _DEFAULT_COLUMNS = {
     "date": "date",
@@ -137,6 +157,7 @@ def _normalize_columns(
     df: pd.DataFrame,
     col_map: dict[str, str],
     date_fmt: str | None,
+    invalid_bars: str = _DEFAULT_INVALID_BARS,
 ) -> pd.DataFrame | None:
     rename: dict[str, str] = {}
     for std_name, src_name in col_map.items():
@@ -174,7 +195,7 @@ def _normalize_columns(
     for col in ohlcv_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df = df.dropna(subset=["open", "high", "low", "close"])
-    df = validate_ohlc(df)
+    df = validate_ohlc(df, strategy=invalid_bars)
     for col in ohlcv_cols:
         df[col] = df[col].astype("float64")
 
@@ -184,29 +205,67 @@ def _normalize_columns(
     return df
 
 
-def _read_csv(path: str, col_map: dict[str, str], date_fmt: str | None) -> pd.DataFrame | None:
+def _read_csv(
+    path: str,
+    col_map: dict[str, str],
+    date_fmt: str | None,
+    invalid_bars: str = _DEFAULT_INVALID_BARS,
+) -> pd.DataFrame | None:
     df = pd.read_csv(path)
-    return _normalize_columns(df, col_map, date_fmt)
+    return _normalize_columns(df, col_map, date_fmt, invalid_bars)
 
 
-def _read_parquet(path: str, col_map: dict[str, str], date_fmt: str | None) -> pd.DataFrame | None:
+def _read_parquet(
+    path: str,
+    col_map: dict[str, str],
+    date_fmt: str | None,
+    invalid_bars: str = _DEFAULT_INVALID_BARS,
+) -> pd.DataFrame | None:
     df = pd.read_parquet(path)
     if isinstance(df.index, pd.DatetimeIndex):
         df = df.reset_index()
         if date_fmt is None and col_map.get("date", "date") not in df.columns:
             col_map = dict(col_map)
             col_map["date"] = df.columns[0]
-    return _normalize_columns(df, col_map, date_fmt)
+    return _normalize_columns(df, col_map, date_fmt, invalid_bars)
 
 
 def _read_duckdb(
-    db_path: str, query: str, col_map: dict[str, str], date_fmt: str | None
+    db_path: str,
+    query: str,
+    col_map: dict[str, str],
+    date_fmt: str | None,
+    invalid_bars: str = _DEFAULT_INVALID_BARS,
 ) -> pd.DataFrame | None:
     import duckdb
 
     with duckdb.connect(db_path, read_only=True) as conn:
         df = conn.execute(query).df()
-    return _normalize_columns(df, col_map, date_fmt)
+    return _normalize_columns(df, col_map, date_fmt, invalid_bars)
+
+
+def _resolve_invalid_bars(entry: dict[str, Any], config: dict[str, Any]) -> str:
+    """Per-source ``invalid_bars`` if set, else the file-level default, else ``drop``.
+
+    An unrecognised value falls back to the default **and says so**: silently
+    accepting a typo would mean the caller believes bars are kept while they are
+    still being dropped.
+    """
+    for scope, raw in (("source", entry.get("invalid_bars")),
+                       ("config", config.get("invalid_bars"))):
+        if raw is None:
+            continue
+        value = str(raw).strip().lower()
+        if value in _INVALID_BAR_STRATEGIES:
+            return value
+        logger.warning(
+            "local loader: unknown %s-level invalid_bars %r for symbol %s; "
+            "expected one of %s, using %r",
+            scope, raw, entry.get("symbol", "?"),
+            ", ".join(_INVALID_BAR_STRATEGIES), _DEFAULT_INVALID_BARS,
+        )
+        return _DEFAULT_INVALID_BARS
+    return _DEFAULT_INVALID_BARS
 
 
 _READERS = {
@@ -302,6 +361,7 @@ class DataLoader:
             return None
 
         src_type: str = entry.get("type", "csv").strip().lower()
+        invalid_bars = _resolve_invalid_bars(entry, self._config or {})
         reader = _READERS.get(src_type)
         if reader is None:
             logger.warning("local loader: unsupported type %r for symbol %s", src_type, symbol)
@@ -327,14 +387,14 @@ class DataLoader:
                     "local loader: missing db_path or query for duckdb symbol %s", symbol
                 )
                 return None
-            df = _read_duckdb(db_path, query, col_map, date_fmt)
+            df = _read_duckdb(db_path, query, col_map, date_fmt, invalid_bars)
         else:
             path = entry.get("path", "").strip()
             if not path:
                 logger.warning("local loader: missing path for symbol %s", symbol)
                 return None
             expanded = str(Path(path).expanduser())
-            df = reader(expanded, col_map, date_fmt)
+            df = reader(expanded, col_map, date_fmt, invalid_bars)
 
         if df is None:
             return None
