@@ -74,6 +74,7 @@ _UNIVERSE_TAG = {
     "csi300": "equity_cn",
     "sp500": "equity_us",
     "btc-usdt": "crypto",
+    "hk-local": "equity_hk",
 }
 
 
@@ -138,6 +139,8 @@ def _load_universe_panel(
         panel = _load_sp500_panel(start, end)
     elif universe == "btc-usdt":
         panel = _load_btc_panel(start, end)
+    elif universe == "hk-local":
+        panel = _load_hk_local_panel(start, end)
     else:  # pragma: no cover — guarded above
         raise ValueError(f"unhandled universe {universe!r}")
 
@@ -610,6 +613,59 @@ def _load_btc_panel(start: str, end: str) -> dict[str, pd.DataFrame]:
     panel = _wide_from_fetched(fetched, include_amount=False)
     if all(k in panel for k in ("open", "high", "low", "close")):
         panel["vwap"] = (panel["open"] + panel["high"] + panel["low"] + panel["close"]) / 4.0
+    return panel
+
+
+def _load_hk_local_panel(start: str, end: str) -> dict[str, pd.DataFrame]:
+    """Hong Kong panel from the user's own local data bridge.
+
+    165 of the bundled alphas declare ``equity_hk`` in ``universe``, and every
+    layer below this one already speaks Hong Kong — nine loaders declare the
+    market, ``global_equity`` sizes HK in 100-share lots, ``Market.EQUITY_HK``
+    has its own vwap branch. Only the bench had no Hong Kong entry point, so
+    those alphas could not be benched at all.
+
+    Constituents come from whatever the user configured in
+    ``~/.vibe-trading/data-bridge/config.yaml``: this universe is deliberately
+    *user-defined* rather than an index snapshot. There is no survivorship
+    claim to make either way — the caller chose the names.
+
+    ``vwap`` is the typical price ``(O + H + L + C) / 4``, matching the SP500
+    path and ``factors.base.vwap``'s Hong Kong branch. **Not** ``amount /
+    volume``: the two are not in the same space once prices are back-adjusted.
+    Measured against one vendor on 2026-09-25 — back-adjustment scales close
+    (dividends reinvested) and scales volume only for share-count events, while
+    turnover is left at its raw value. On 2800.HK the price factor was 1.554
+    and the volume factor 1.000, so ``amount / volume`` would read 35% below
+    close: a caliber gap wearing the shape of a price.
+    """
+    from backtest.loaders.registry import LOADER_REGISTRY
+    import backtest.loaders.local_loader  # noqa: F401 — registers "local"
+
+    loader = LOADER_REGISTRY["local"]()
+    if not loader.is_available():
+        raise ValueError(
+            "universe 'hk-local' needs the local data bridge: configure "
+            "~/.vibe-trading/data-bridge/config.yaml with at least one source"
+        )
+    loader._ensure_config()
+    codes = sorted(loader._source_by_symbol)
+    fetched = _retry(lambda: loader.fetch(codes, start, end)) or {}
+
+    panel = _wide_from_fetched(fetched, include_amount=True)
+    if all(k in panel for k in ("open", "high", "low", "close")):
+        panel["vwap"] = (panel["open"] + panel["high"] + panel["low"] + panel["close"]) / 4.0
+
+    panel["_meta"] = {
+        "universe": "hk-local",
+        "survivorship_bias": False,
+        "degraded": False,
+        "constituent_source": "local data bridge (user-defined)",
+        "constituent_source_date": None,
+        "constituent_count": len(codes),
+        "sector_source": None,
+        "sector_coverage": 0.0,
+    }
     return panel
 
 

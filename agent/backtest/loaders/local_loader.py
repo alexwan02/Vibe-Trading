@@ -190,6 +190,14 @@ def _normalize_columns(
     ohlcv_cols: list[str] = ["open", "high", "low", "close"]
     if "volume" in df.columns:
         ohlcv_cols.append("volume")
+    # ``amount`` (turnover in quote currency) is a first-class panel column in
+    # the factor registry — ``src.factors.registry._PRICE_COLS`` lists it, 18
+    # bundled alphas declare it in ``columns_required``, and ``_wide_from_fetched``
+    # takes an ``include_amount`` switch. Dropping it here meant a local file that
+    # carried the column still produced a panel without it, so those alphas were
+    # skipped with no indication that the data had been there all along.
+    if "amount" in df.columns:
+        ohlcv_cols.append("amount")
 
     df = df[ohlcv_cols]
     for col in ohlcv_cols:
