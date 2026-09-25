@@ -656,6 +656,9 @@ def _load_hk_local_panel(start: str, end: str) -> dict[str, pd.DataFrame]:
     if all(k in panel for k in ("open", "high", "low", "close")):
         panel["vwap"] = (panel["open"] + panel["high"] + panel["low"] + panel["close"]) / 4.0
 
+    _attach_hk_fundamentals(panel, loader, codes)
+    _attach_hk_sectors(panel, loader, codes)
+
     panel["_meta"] = {
         "universe": "hk-local",
         "survivorship_bias": False,
@@ -667,6 +670,134 @@ def _load_hk_local_panel(start: str, end: str) -> dict[str, pd.DataFrame]:
         "sector_coverage": 0.0,
     }
     return panel
+
+
+def _attach_hk_sectors(
+    panel: dict[str, pd.DataFrame], loader: Any, codes: list[str]
+) -> None:
+    """Attach the ``sector`` tag from the bridge's optional sector table.
+
+    19 of the bundled alphas are industry-neutralized and the registry refuses
+    them outright when the panel carries no ``sector`` tag, so a Hong Kong run
+    skipped all 19 for want of a single column.
+
+    Unlike prices and fundamentals this is one table for the whole market, not
+    one file per name: an industry label is a cross-sectional attribute, not a
+    series. Entries point at the same path.
+
+    Names with no label — ETFs have no industry, and the vendor's endpoint
+    rejects them outright — are left blank rather than bucketed into an
+    "unknown" group. A mostly-unlabelled panel would demean one big unknown
+    bucket, which is the global-demean fallback wearing a sector tag; the SP500
+    path guards the same way with a coverage floor.
+    """
+    paths = {
+        (loader._source_by_symbol.get(c) or {}).get("sector_table")
+        for c in codes
+    }
+    paths.discard(None)
+    if not paths or "close" not in panel:
+        return
+    table = None
+    for path in paths:
+        try:
+            table = pd.read_parquet(path)
+            break
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("hk-local: sector table unreadable at %s: %s", path, exc)
+    if table is None or "code" not in table.columns:
+        return
+    labels = {
+        str(r["code"]): ("" if pd.isna(r.get("sector")) else str(r.get("sector")))
+        for _, r in table.iterrows()
+    }
+    columns = panel["close"].columns
+    tagged = [labels.get(str(code), "") for code in columns]
+    coverage = sum(1 for t in tagged if t) / len(tagged) if len(tagged) else 0.0
+    if coverage < _SP500_MIN_SECTOR_COVERAGE:
+        logger.warning(
+            "hk-local: sector coverage %.1f%% below %.0f%% — leaving the tag off "
+            "so industry-neutralized alphas skip rather than demean one bucket",
+            coverage * 100, _SP500_MIN_SECTOR_COVERAGE * 100,
+        )
+        return
+    panel["sector"] = pd.DataFrame(
+        [tagged] * len(panel["close"].index),
+        index=panel["close"].index, columns=columns,
+    )
+
+
+def _attach_hk_fundamentals(
+    panel: dict[str, pd.DataFrame], loader: Any, codes: list[str]
+) -> None:
+    """Fill the ``fund:`` namespace from the bridge's optional fundamentals files.
+
+    The registry treats ``fund:`` as an open namespace and leaves it to "the
+    runtime loader" to decide what can be populated — and none of the three
+    existing universes populates anything, so every fundamental alpha is skipped
+    on every run. A bridge entry may carry a ``fundamentals`` path alongside its
+    price ``path``; where it does, the sparse per-period table is expanded onto
+    the price index.
+
+    Point-in-time: a value appears on its ``known_at`` date — the date the
+    numbers were first public — and is held forward from there. Never on the
+    period end, which would hand the backtest a report weeks before it existed.
+    Duplicate periods keep the earliest disclosure, matching
+    ``fundamentals_loader``'s ``pit=True``.
+
+    Derived fields come from ``_fundamental_schema``'s own ``compute``
+    functions, not from formulas rewritten here: two definitions of ROE would
+    drift, and both would look right.
+    """
+    entries = {c: loader._source_by_symbol.get(c) or {} for c in codes}
+    paths = {c: e.get("fundamentals") for c, e in entries.items() if e.get("fundamentals")}
+    if not paths or "close" not in panel:
+        return
+    index = panel["close"].index
+    from backtest.loaders import _fundamental_schema as schema
+
+    raw: dict[str, dict[str, pd.Series]] = {}
+    for code, path in paths.items():
+        try:
+            table = pd.read_parquet(path)
+        except Exception as exc:  # noqa: BLE001 — one unreadable file must not sink the panel
+            logger.warning("hk-local: fundamentals unreadable for %s: %s", code, exc)
+            continue
+        if table.empty or "known_at" not in table.columns:
+            continue
+        table = table.sort_values("known_at").drop_duplicates("period", keep="first")
+        when = pd.DatetimeIndex(pd.to_datetime(table["known_at"]))
+        for column in table.columns:
+            if column in ("period", "known_at", "valid_until", "currency",
+                          "decay_horizon") or column.endswith("_json"):
+                continue
+            series = pd.Series(pd.to_numeric(table[column], errors="coerce").to_numpy(),
+                               index=when).dropna()
+            if series.empty:
+                continue
+            series = series[~series.index.duplicated(keep="last")].sort_index()
+            raw.setdefault(column, {})[code] = series.reindex(index, method="ffill")
+
+    if not raw:
+        return
+    base = {field: pd.DataFrame(cols, index=index) for field, cols in raw.items()}
+    for field in schema.list_supported_fields():
+        kind, spec = schema.resolve_field(field)
+        if field in base:
+            frame = base[field]
+        elif getattr(kind, "name", str(kind)).lower().startswith("derived"):
+            deps = spec.get("dependencies", ()) if isinstance(spec, dict) else ()
+            if not deps or any(d not in base for d in deps):
+                continue
+            aligned = {d: base[d] for d in deps}
+            try:
+                frame = spec["compute"](aligned)
+            except Exception as exc:  # noqa: BLE001 — a bad derivation is not a panel failure
+                logger.warning("hk-local: cannot derive %s: %s", field, exc)
+                continue
+        else:
+            continue
+        panel[f"fund:{field}"] = frame.reindex(index=index, columns=panel["close"].columns)
 
 
 def _wide_from_fetched(
