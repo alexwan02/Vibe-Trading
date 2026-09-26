@@ -77,6 +77,30 @@ class SdmRegisterTool(BaseTool):
                 "type": "string",
                 "description": "Signal logic description (strategy only)",
             },
+            # A strategy is what it enters, what it exits and how much it
+            # sizes. Registering one with only a signal_definition stores a
+            # record that cannot be acted on or reviewed — the reader is told
+            # what the signal is and nothing about how it trades.
+            "entry_rules": {
+                "type": "string",
+                "description": "What opens a position (strategy only)",
+            },
+            "exit_rules": {
+                "type": "string",
+                "description": "What closes a position (strategy only)",
+            },
+            "position_sizing": {
+                "type": "string",
+                "description": "How capital is allocated across selections (strategy only)",
+            },
+            "decay_horizon": {
+                "type": "integer",
+                "minimum": 1,
+                "description": (
+                    "Signal horizon in trading days; also the label span used "
+                    "by purged validation. Defaults to 20 when omitted."
+                ),
+            },
             "signal_engine_path": {
                 "type": "string",
                 "description": "Path to signal_engine.py",
@@ -187,9 +211,17 @@ class SdmRegisterTool(BaseTool):
                 theme=theme,
                 columns_required=columns_required,
                 signal_definition=kwargs.get("signal_definition"),
+                entry_rules=kwargs.get("entry_rules"),
+                exit_rules=kwargs.get("exit_rules"),
+                position_sizing=kwargs.get("position_sizing"),
                 signal_engine_path=kwargs.get("signal_engine_path"),
                 hypothesis_id=kwargs.get("hypothesis_id"),
                 status=ArtifactStatus.CREATED,
+                # Passed only when supplied: Artifact defaults it to 20, and
+                # forwarding an absent value as None would overwrite that
+                # default with a null the rest of the stack does not expect.
+                **({"decay_horizon": int(kwargs["decay_horizon"])}
+                   if kwargs.get("decay_horizon") is not None else {}),
                 **self._governance_kwargs(kwargs),
             )
 
