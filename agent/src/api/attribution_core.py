@@ -514,7 +514,18 @@ def _attribution_run_brinson(
 
 
 def _attribution_load_position_weights(run_dir: Path, notes: List[str]) -> Optional[Dict[str, float]]:
-    """Read the last row of ``positions.csv`` as per-symbol weights.
+    """Read the last *held* row of ``positions.csv`` as per-symbol weights.
+
+    The final row is not the one to read. A run closes its book on the last
+    bar -- every trade exits with ``end_of_backtest`` -- so that row is all
+    zeros by construction, and reading it made Brinson report that a portfolio
+    which had been invested throughout "has all position weights zero". On a
+    1349-row run this was a one-row problem that nulled the whole section
+    (2026-09-26, measured: rows 1..1348 carried weight sums near 0.79, row
+    1349 carried 0.00).
+
+    Scanning back to the last row with any non-zero weight makes the skip mean
+    what it says: the book really never held anything.
 
     Returns ``None`` (with a skip note) when the artifact is missing or cannot
     be parsed into at least one weighted symbol column.
@@ -535,11 +546,27 @@ def _attribution_load_position_weights(run_dir: Path, notes: List[str]) -> Optio
     if not symbols:
         notes.append("brinson attribution skipped: positions.csv could not be parsed")
         return None
-    last_row = rows[-1]
-    weights: Dict[str, float] = {}
-    for symbol in symbols:
-        weight = _attribution_finite_float(last_row.get(symbol))
-        weights[symbol] = weight if weight is not None else 0.0
+
+    def _row_weights(row: Dict[str, Any]) -> Dict[str, float]:
+        out: Dict[str, float] = {}
+        for symbol in symbols:
+            weight = _attribution_finite_float(row.get(symbol))
+            out[symbol] = weight if weight is not None else 0.0
+        return out
+
+    weights = _row_weights(rows[-1])
+    if any(weight != 0.0 for weight in weights.values()):
+        return weights
+    for row in reversed(rows[:-1]):
+        candidate = _row_weights(row)
+        if any(weight != 0.0 for weight in candidate.values()):
+            notes.append(
+                "brinson attribution used the last row with a held position; "
+                "the final row is the run's end-of-backtest liquidation"
+            )
+            return candidate
+    # Every row is flat: the book genuinely never held anything, which is the
+    # one case the downstream zero-check was written for.
     return weights
 
 
