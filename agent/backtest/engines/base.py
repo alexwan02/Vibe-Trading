@@ -1006,6 +1006,17 @@ class BaseEngine(ABC):
                         window_ret if window_ret is not None else bench_result.total_ret
                     ),
                 }
+            else:
+                # Falling back to the equal-weight basket is defensible; doing it
+                # in silence is not. Every benchmark-relative metric below
+                # (excess_return, information_ratio, tracking_error,
+                # benchmark_beta) is then measured against something the caller
+                # never asked for, and nothing in the output says so.
+                config["_run_card_benchmark_warning"] = (
+                    f"declared benchmark {bench_ticker!r} could not be resolved; "
+                    "benchmark-relative metrics are graded against the "
+                    "equal-weight basket of the traded symbols instead"
+                )
         # ── External benchmark fetch ──────────────────────────────────────────
 
         bench_equity = self.initial_capital * (1 + bench_ret).cumprod()
@@ -1151,6 +1162,8 @@ class BaseEngine(ABC):
             card_warnings.append(config["_run_card_caliber_warning"])
         if config.get("_run_card_annualisation_warning"):
             card_warnings.append(config["_run_card_annualisation_warning"])
+        if config.get("_run_card_benchmark_warning"):
+            card_warnings.append(config["_run_card_benchmark_warning"])
         from backtest.run_card import write_run_card
         write_run_card(
             run_dir,

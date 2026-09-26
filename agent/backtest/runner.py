@@ -1306,8 +1306,11 @@ def main(run_dir: Path) -> None:
 
     # Every source has already been fetched, sanitized, and enriched above.
     # Reuse that exact snapshot so provider costs and run-card provenance stay
-    # aligned with the data consumed by the engine.
-    loader = _AutoLoader(data_map)
+    # aligned with the data consumed by the engine. The real loader rides along
+    # so a symbol outside the snapshot -- a declared benchmark, typically --
+    # is still reachable, and ``name`` keeps the offline guard in
+    # ``resolve_benchmark`` able to recognise it (2026-09-26).
+    loader = _AutoLoader(data_map, inner=loader, name=source)
 
     if engine_type == "options":
         from backtest.engines.options_portfolio import run_options_backtest
@@ -1956,14 +1959,33 @@ def _sanitize_data_map(data_map: dict) -> dict:
 
 
 class _AutoLoader:
-    """Loader adapter that returns a pre-fetched data map."""
+    """Loader adapter that returns a pre-fetched data map.
 
-    def __init__(self, data_map: dict):
+    ``name`` mirrors the source that actually served the snapshot and ``inner``
+    keeps the real loader reachable. Both exist for symbols the run did *not*
+    pre-fetch, and a declared benchmark outside ``codes`` is exactly that case:
+    without them ``resolve_benchmark`` sees a loader with no ``name``, decides
+    it cannot be trusted to stay offline, and every ``source="local"`` run
+    silently grades itself against the equal-weight basket instead of the
+    benchmark it declared (2026-09-26).
+    """
+
+    def __init__(self, data_map: dict, inner: Any = None, name: str | None = None):
         self._data = data_map
+        self._inner = inner
+        self.name = name
 
     def fetch(self, codes, start_date, end_date, fields=None, interval="1D"):
-        """Return preloaded rows for requested codes."""
-        return {c: df for c, df in self._data.items() if c in codes}
+        """Preloaded rows first; symbols outside the snapshot go to the real loader."""
+        served = {c: df for c, df in self._data.items() if c in codes}
+        missing = [c for c in codes if c not in served]
+        if missing and self._inner is not None:
+            extra = self._inner.fetch(
+                missing, start_date, end_date, interval=interval, fields=fields
+            )
+            if isinstance(extra, dict):
+                served.update(extra)
+        return served
 
 
 if __name__ == "__main__":
