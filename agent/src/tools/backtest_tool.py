@@ -58,6 +58,102 @@ def _persist_timeout_output(run_path: Path, exc: subprocess.TimeoutExpired) -> d
     return output
 
 
+#: Columns copied verbatim from ``artifacts/metrics.csv`` into ``BenchResult``.
+#: Strategy metrics only — a strategy backtest produces no cross-sectional IC,
+#: so ``ic_mean``/``ic_std``/``ir``/``ic_positive_ratio``/``t_stat`` stay None
+#: instead of being filled with a stand-in.
+_BENCH_METRIC_COLUMNS = ("sharpe", "annual_return", "max_drawdown", "calmar")
+
+
+def _read_metrics_row(run_path: Path) -> dict[str, float] | None:
+    """Return the single data row of ``artifacts/metrics.csv``, floats only."""
+    import csv
+
+    metrics_path = run_path / "artifacts" / "metrics.csv"
+    if not metrics_path.is_file():
+        return None
+    with metrics_path.open(encoding="utf-8", newline="") as fh:
+        row = next(csv.DictReader(fh), None)
+    if not row:
+        return None
+    out: dict[str, float] = {}
+    for col in _BENCH_METRIC_COLUMNS:
+        raw = (row.get(col) or "").strip()
+        if not raw:
+            continue
+        try:
+            out[col] = float(raw)
+        except ValueError:
+            continue        # a non-numeric cell is a missing metric, not a crash
+    return out
+
+
+def _record_bench_if_declared(
+    config: dict, run_path: Path, *, success: bool
+) -> dict[str, str]:
+    """Append this run to the artifact's ``bench_history`` when it declares one.
+
+    A backtest knows its ``run_dir``; it does not know which registered
+    artifact it belongs to. The link is therefore **declared, never inferred**:
+    ``config.json`` may carry an ``artifact_id``, and only then is the run
+    recorded. Most exploratory runs belong to no artifact and are skipped —
+    that is the normal path, not a failure.
+
+    Why this exists: ``store.record_bench()`` had no production caller at all,
+    so ``bench_history`` stayed empty, so both decay entry points
+    (``sdm_status(decay_check)`` and ``sdm_decay_scan``) hit their hardcoded
+    ``len(bench_history) < 3`` floor forever. A bench is what a backtest *is*,
+    so this is where the record belongs. Same class of gap as the ``state.json``
+    one fixed just below (#1412): a tool-driven run stayed invisible to a
+    downstream system for want of one written record.
+
+    ``category`` is deliberately left ``None``. Grading a run ``alive``/``dead``
+    belongs to the EVALUATE phase and its own thresholds; a runner that graded
+    its own output would make the measurement and the verdict inseparable.
+
+    Never raises: the backtest already succeeded, and a bookkeeping failure must
+    not turn that into a failed run. Failures are reported in the return value
+    rather than swallowed.
+    """
+    if not success:
+        return {"status": "skipped", "reason": "backtest did not succeed"}
+    artifact_id = str(config.get("artifact_id") or "").strip()
+    if not artifact_id:
+        return {"status": "skipped", "reason": "no artifact_id in config"}
+
+    try:
+        from src.strategy_store._shared import get_store
+        from src.strategy_store.models import BenchResult
+
+        store = get_store()
+        history = list(store.get_bench_history(artifact_id, limit=1000))
+        # Idempotent by run_dir: re-running the same directory must not stack
+        # duplicate rows, which would silently inflate the decay baseline.
+        if any(r.run_dir == str(run_path) for r in history):
+            return {"status": "skipped", "reason": "run_dir already recorded",
+                    "artifact_id": artifact_id}
+
+        metrics = _read_metrics_row(run_path)
+        if metrics is None:
+            return {"status": "skipped",
+                    "reason": "artifacts/metrics.csv missing or empty",
+                    "artifact_id": artifact_id}
+
+        bench_type = "initial" if not history else "periodic"
+        store.record_bench(BenchResult(
+            artifact_id=artifact_id,
+            bench_type=bench_type,
+            test_start=str(config.get("start_date") or "") or None,
+            test_end=str(config.get("end_date") or "") or None,
+            run_dir=str(run_path),
+            **metrics,
+        ))
+        return {"status": "recorded", "artifact_id": artifact_id,
+                "bench_type": bench_type}
+    except Exception as exc:                    # noqa: BLE001 — see docstring
+        return {"status": "failed", "reason": f"{type(exc).__name__}: {exc}"}
+
+
 def run_backtest(run_dir: str) -> str:
     """Run backtest: validate config.json + signal_engine.py, invoke built-in engine.
 
@@ -151,6 +247,8 @@ def run_backtest(run_dir: str) -> str:
     else:
         state_store.mark_failure(run_path, f"backtest engine exited with code {result.exit_code}")
 
+    bench_record = _record_bench_if_declared(config, run_path, success=result.success)
+
     emit_progress("finalize", message="collecting artifacts")
     artifacts_found = {name: str(path) for name, path in result.artifacts.items()}
     return json.dumps({
@@ -160,6 +258,7 @@ def run_backtest(run_dir: str) -> str:
         "stderr": result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr,
         "artifacts": artifacts_found,
         "run_dir": run_dir,
+        "bench_record": bench_record,
     }, ensure_ascii=False)
 
 
