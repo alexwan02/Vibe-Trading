@@ -1255,14 +1255,41 @@ def _account_to_dict(row: Mapping[str, Any], fallback_currency: str = "") -> dic
 
 
 def _position_to_dict(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalise one Futu position row.
+
+    Futu reports a position on **two cost bases at once**, and the two
+    disagree by a lot. ``cost_price`` is the *diluted* cost -- realised gains
+    are subtracted from it -- so on a name that has been traded round-trip it
+    can go negative, and ``pl_ratio``, which is computed on that basis, then
+    has no meaning. Futu fills it with **0.0 and still sets
+    ``pl_ratio_valid=True``** (2026-09-26, measured): "cannot be computed" and
+    "is zero" look identical downstream. On a real book, 01810 read
+    ``cost_price -2.78 / pl_ratio 0.00 / pl_val +5736`` -- three numbers that
+    cannot all be true on one basis. On the average-cost basis the same
+    position is ``23.738 / +9.11%``, which is the readable one. Carrying only
+    the diluted pair left the caller no way to notice, so both bases ship.
+
+    ``pl_val`` mixes realised and unrealised P&L. 01428 read ``-4270``, which
+    is ``unrealized -11655 + realized +7385``; dividing it by ``market_val``
+    to get a return produces -83% on a name that is down 23%. The two
+    components ship alongside it so the split is available rather than
+    inferred.
+
+    Keys are only ever added here, never renamed or dropped: callers reading
+    the original ten are unaffected.
+    """
     return {
         "code": _first(row, ("code",)),
         "qty": _first(row, ("qty",)),
         "can_sell_qty": _first(row, ("can_sell_qty",)),
         "cost_price": _first(row, ("cost_price",)),
+        "average_cost": _first(row, ("average_cost",)),
         "market_val": _first(row, ("market_val",)),
         "pl_ratio": _first(row, ("pl_ratio",)),
+        "pl_ratio_avg_cost": _first(row, ("pl_ratio_avg_cost",)),
         "pl_val": _first(row, ("pl_val",)),
+        "unrealized_pl": _first(row, ("unrealized_pl",)),
+        "realized_pl": _first(row, ("realized_pl",)),
         "position_side": str(_first(row, ("position_side",), "")),
         "market": str(_first(row, ("position_market",), "") or "").upper(),
         "currency": str(_first(row, ("currency",), "") or "").upper(),
