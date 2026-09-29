@@ -71,6 +71,15 @@ class GlobalEquityEngine(BaseEngine):
         # rate instead of inventing an exchange-wide charge.
         self.slippage_ca: float = config.get("slippage_ca", self.slippage_us)
         self.ca_commission: float = config.get("ca_commission", 0.0)
+        # HK board lots are per-symbol: measured across 103 HK names, only
+        # 24 (23%) are 100 shares; the rest span 20 (MINIMAX-W) to 5000
+        # (06051). Rounding every HK order to 100 silently blocks orders whose
+        # target is smaller than one assumed lot, and the failure surfaces as a
+        # capital shortfall, not as a lot-grid bug.
+        self.hk_lot_sizes: dict[str, int] = {
+            str(k).upper(): int(v)
+            for k, v in (config.get("hk_lot_sizes") or {}).items()}
+        self.lot_assumptions: dict[str, int] = {}
         # UK defaults. LSE has no broker-commission model; the exchange-level
         # cost is SDRT: 0.5% on the buyer of Main Market equities, rounded to
         # the nearest penny (FA86/S99(13); exact ½p rounds up). Exemptions —
@@ -83,8 +92,30 @@ class GlobalEquityEngine(BaseEngine):
         """Allow same-session trading in both directions for every market."""
         return True
 
+    def _hk_lot(self, symbol: str) -> int:
+        """Board lot for one HK symbol, falling back to 100 and recording it.
+
+        Same shape as ``ChinaFuturesEngine._priced``: a symbol absent from the
+        table is sized on a generic constant that looks exactly like data in
+        the output, so the miss is remembered and the run can state which of
+        its lot sizes were assumed rather than measured.
+        """
+        if not symbol:
+            self.lot_assumptions["<no active symbol>"] = 100
+            return 100
+        key = symbol.upper()
+        lot = self.hk_lot_sizes.get(key)
+        if lot is None:
+            # Quotes may carry 00100.HK while the table was written 100.HK.
+            head, _, tail = key.partition(".")
+            lot = self.hk_lot_sizes.get(f"{head.lstrip('0') or '0'}.{tail}")
+        if lot is None or lot <= 0:
+            self.lot_assumptions[key] = 100
+            return 100
+        return int(lot)
+
     def round_size(self, raw_size: float, price: float) -> float:
-        """US: fractional; HK: 100-share lots; Canada/UK: whole shares.
+        """US: fractional; HK: per-symbol board lots; Canada/UK: whole shares.
 
         TSX and TSXV accept odd and mixed lots through dedicated facilities,
         so forcing every order to a board lot would reject valid retail trades.
@@ -92,7 +123,8 @@ class GlobalEquityEngine(BaseEngine):
         the whole-share floor.
         """
         if self.market == "hk":
-            return max(int(raw_size / 100) * 100, 0)
+            lot = self._hk_lot(self._active_symbol)
+            return max(int(raw_size / lot) * lot, 0)
         if self.market in {"ca", "uk"}:
             return float(math.floor(max(raw_size, 0.0)))
         return round(max(raw_size, 0.0), 2)

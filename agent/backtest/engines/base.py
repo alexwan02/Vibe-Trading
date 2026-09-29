@@ -1586,6 +1586,8 @@ class BaseEngine(ABC):
             self._validate_rebalance_values(price, positive=True)
         leverage = self._leverage_for_symbol(symbol)
         target_notional = abs(target_weight) * equity * leverage
+        # round_size dispatches on the active symbol (per-symbol lot grids).
+        self._active_symbol = symbol
         size = self.round_size(
             self._calc_raw_size(symbol, target_notional, price), price
         )
@@ -1721,6 +1723,7 @@ class BaseEngine(ABC):
                 self.apply_slippage(raw_price, -before.direction),
             )
             self._validate_rebalance_values(*prices, positive=True)
+            self._active_symbol = symbol
             sizes = tuple(
                 self.round_size(
                     self._calc_raw_size(symbol, target_notional, price), price
@@ -1737,6 +1740,7 @@ class BaseEngine(ABC):
             # A changed target moves this reference far past any sane band, so
             # target changes still execute at every tolerance.
             if self.rebalance_tolerance > 0.0:
+                self._active_symbol = symbol
                 reference_size = self.round_size(
                     self._calc_raw_size(symbol, target_notional, raw_price), raw_price
                 )
