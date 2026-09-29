@@ -2274,21 +2274,36 @@ class BaseEngine(ABC):
         target_out.to_csv(out / "target_positions.csv")
 
         # Trades (compatible format)
+        #
+        # Entry rows come from fill evidence, not from TradeRecord. A
+        # TradeRecord carries entry_price as the running weighted cost
+        # (recomputed on every increase) while entry_time stays pinned to the
+        # first open, so emitting them as one row describes a trade that never
+        # happened -- observed: a 2026-02-09 weighted cost of 872.47 stamped
+        # 2026-01-12. Exit rows still come from TradeRecord because only it
+        # carries realized pnl. Rows are then sorted by timestamp:
+        # validation._load_trades picks exit rows by `pnl != 0`, not by
+        # adjacency, so ordering is free to be chronological.
         trade_rows = []
-        for t in self.trades:
-            # Entry event
+        for fill in self.fill_records:
+            if fill.action not in ("open", "increase"):
+                continue
             trade_rows.append({
-                "timestamp": str(t.entry_time.date()) if hasattr(t.entry_time, "date") else str(t.entry_time),
-                "code": t.symbol,
-                "side": "buy" if t.direction == 1 else "sell",
-                "price": round(t.entry_price, 4),
-                "qty": round(t.size, 6),
+                "timestamp": str(fill.timestamp.date()) if hasattr(fill.timestamp, "date") else str(fill.timestamp),
+                "code": fill.symbol,
+                "side": "buy" if fill.signed_quantity > 0 else "sell",
+                "price": round(fill.execution_price, 4),
+                "qty": round(abs(fill.signed_quantity), 6),
+                # Entry rows stay labelled "signal": readers identify an exit
+                # as a row whose reason is not "signal", so carrying the fill's
+                # own reason here would present an entry as an exit.
                 "reason": "signal",
                 "pnl": 0.0,
                 "holding_days": 0,
                 "holding_bars": 0.0,
                 "return_pct": 0.0,
             })
+        for t in self.trades:
             # Exit event
             try:
                 hold_days = (t.exit_time - t.entry_time).days
@@ -2307,6 +2322,7 @@ class BaseEngine(ABC):
                 "return_pct": round(t.pnl_pct, 2),
             })
 
+        trade_rows.sort(key=lambda r: str(r["timestamp"]))
         trade_cols = [
             "timestamp", "code", "side", "price", "qty", "reason", "pnl",
             "holding_days", "holding_bars", "return_pct",
