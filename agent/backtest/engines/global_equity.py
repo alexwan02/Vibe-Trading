@@ -28,12 +28,15 @@ India (NSE/BSE) is handled by the dedicated ``backtest.engines.india_equity``
 
 from __future__ import annotations
 
+import logging
 import math
 from decimal import Decimal, ROUND_HALF_UP
 
 import pandas as pd
 
 from backtest.engines.base import BaseEngine
+
+logger = logging.getLogger(__name__)
 
 
 class GlobalEquityEngine(BaseEngine):
@@ -77,7 +80,7 @@ class GlobalEquityEngine(BaseEngine):
         # target is smaller than one assumed lot, and the failure surfaces as a
         # capital shortfall, not as a lot-grid bug.
         self.hk_lot_sizes: dict[str, int] = {
-            str(k).upper(): int(v)
+            str(k).strip().upper(): int(v)
             for k, v in (config.get("hk_lot_sizes") or {}).items()}
         self.lot_assumptions: dict[str, int] = {}
         # UK defaults. LSE has no broker-commission model; the exchange-level
@@ -103,16 +106,34 @@ class GlobalEquityEngine(BaseEngine):
         if not symbol:
             self.lot_assumptions["<no active symbol>"] = 100
             return 100
-        key = symbol.upper()
+        key = symbol.strip().upper()
         lot = self.hk_lot_sizes.get(key)
         if lot is None:
             # Quotes may carry 00100.HK while the table was written 100.HK.
             head, _, tail = key.partition(".")
             lot = self.hk_lot_sizes.get(f"{head.lstrip('0') or '0'}.{tail}")
         if lot is None or lot <= 0:
+            if key not in self.lot_assumptions:
+                logger.warning(
+                    "HK symbol %r has no hk_lot_sizes entry; rounding it on the "
+                    "generic default 100 shares. The backtest reports this under "
+                    "lot_assumptions.",
+                    key,
+                )
             self.lot_assumptions[key] = 100
             return 100
         return int(lot)
+
+    def _engine_diagnostics(self) -> dict:
+        """Report every HK symbol this run rounded on the default board lot."""
+        if not self.lot_assumptions:
+            return {}
+        return {
+            "lot_assumptions": [
+                {"symbol": symbol, "field": "board_lot", "value": lot}
+                for symbol, lot in sorted(self.lot_assumptions.items())
+            ]
+        }
 
     def round_size(self, raw_size: float, price: float) -> float:
         """US: fractional; HK: per-symbol board lots; Canada/UK: whole shares.

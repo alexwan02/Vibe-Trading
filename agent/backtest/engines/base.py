@@ -2303,7 +2303,7 @@ class BaseEngine(ABC):
         # adjacency, so ordering is free to be chronological.
         trade_rows = []
         for fill in self.fill_records:
-            if fill.action not in ("open", "increase"):
+            if fill.signed_quantity == 0 or fill.action not in ("open", "increase"):
                 continue
             trade_rows.append({
                 "timestamp": str(fill.timestamp.date()) if hasattr(fill.timestamp, "date") else str(fill.timestamp),

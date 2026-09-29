@@ -84,3 +84,56 @@ def test_lot_table_keys_tolerate_leading_zero_differences():
 
     assert engine.round_size(99, price=10.0) == 80
     assert engine.lot_assumptions == {}
+
+
+def test_assumed_lots_reach_the_run_metrics():
+    """Recording a fallback is only useful if the run's metrics carry it."""
+    engine = _engine()
+    engine._active_symbol = "09999.HK"
+    engine.round_size(250, price=10.0)
+
+    assert engine._engine_diagnostics() == {
+        "lot_assumptions": [
+            {"symbol": "09999.HK", "field": "board_lot", "value": 100}
+        ]
+    }
+
+
+def test_a_fully_measured_run_reports_no_assumptions():
+    engine = _engine()
+    engine._active_symbol = "00100.HK"
+    engine.round_size(99, price=10.0)
+
+    assert engine._engine_diagnostics() == {}
+
+
+def test_each_assumed_symbol_is_warned_once(caplog):
+    engine = _engine()
+    engine._active_symbol = "09999.HK"
+
+    with caplog.at_level("WARNING", logger="backtest.engines.global_equity"):
+        engine.round_size(250, price=10.0)
+        engine.round_size(350, price=10.0)
+
+    assert sum("09999.HK" in r.getMessage() for r in caplog.records) == 1
+
+
+def test_lot_table_keys_tolerate_case_and_whitespace():
+    engine = GlobalEquityEngine(
+        {"initial_cash": 1_000_000, "hk_lot_sizes": {" 00100.hk ": 20}}, market="hk"
+    )
+    engine._active_symbol = "00100.HK"
+
+    assert engine.round_size(99, price=10.0) == 80
+    assert engine.lot_assumptions == {}
+
+
+def test_non_hk_markets_ignore_the_lot_table():
+    us = GlobalEquityEngine({"initial_cash": 1_000_000, "hk_lot_sizes": LOTS}, market="us")
+    us._active_symbol = "AAPL"
+    ca = GlobalEquityEngine({"initial_cash": 1_000_000, "hk_lot_sizes": LOTS}, market="ca")
+    ca._active_symbol = "SHOP.TO"
+
+    assert us.round_size(59.4321, price=180.0) == 59.43
+    assert ca.round_size(59.9, price=100.0) == 59.0
+    assert us._engine_diagnostics() == {} and ca._engine_diagnostics() == {}
