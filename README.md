@@ -582,8 +582,10 @@ One `get_market_data` call, **28 market-data sources**, one of them the optional
 - **India (NSE/BSE)** → `yahoo` · `yfinance` · `india_broker` · `local`
 - **Korea (KOSPI/KOSDAQ)** → `pykrx` · `yahoo` · `yfinance` · `local`
 - **UK (LSE)** → `yahoo` · `yfinance` · `local` *(declared GBP/GBp quotes only)*
-- **Crypto** → `okx` · `ccxt` · `binance` · `yfinance` · `local`
-- **Forex / metals** → `mt5` · `yfinance` · `akshare` · `local` &nbsp;·&nbsp; *(futures / fund / macro → `tushare`/`akshare` → `local`)*
+- **Crypto** → `okx` · `binance` · `ccxt` · `yfinance` · `local`
+- **Forex / metals** → `mt5` · `akshare` · `yfinance` · `local`
+- **Canada / Vietnam / Argentina / indices** → `yahoo` · `yfinance` · `local`
+- **China futures** → `akshare` · `local` &nbsp;·&nbsp; **funds** → `tushare` · `akshare` · `local` &nbsp;·&nbsp; **macro** → `akshare` · `tushare` · `local`
 
 ### Using Longbridge explicitly
 

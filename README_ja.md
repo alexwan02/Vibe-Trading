@@ -469,8 +469,10 @@ vibe-trading connector install /tmp/my-broker
 - **インド株（NSE/BSE）** → `yahoo` · `yfinance` · `india_broker` · `local`
 - **韓国（KOSPI/KOSDAQ）** → `pykrx` · `yahoo` · `yfinance` · `local`
 - **英国（LSE）** → `yahoo` · `yfinance` · `local` *（GBP/GBp と明示されたクォートのみ）*
-- **暗号資産** → `okx` · `ccxt` · `binance` · `yfinance` · `local`
-- **為替/貴金属** → `mt5` · `yfinance` · `akshare` · `local` &nbsp;·&nbsp; *(先物 / ファンド / マクロ → `tushare`/`akshare` → `local`)*
+- **暗号資産** → `okx` · `binance` · `ccxt` · `yfinance` · `local`
+- **為替/貴金属** → `mt5` · `akshare` · `yfinance` · `local`
+- **カナダ / ベトナム / アルゼンチン / 指数** → `yahoo` · `yfinance` · `local`
+- **中国先物** → `akshare` · `local` &nbsp;·&nbsp; **ファンド** → `tushare` · `akshare` · `local` &nbsp;·&nbsp; **マクロ** → `akshare` · `tushare` · `local`
 
 ### Longbridge を明示的に使う
 

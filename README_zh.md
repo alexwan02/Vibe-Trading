@@ -484,8 +484,10 @@ vibe-trading connector install /tmp/my-broker
 - **印度（NSE/BSE）** → `yahoo` · `yfinance` · `india_broker` · `local`
 - **韩国（KOSPI/KOSDAQ）** → `pykrx` · `yahoo` · `yfinance` · `local`
 - **英国（LSE）** → `yahoo` · `yfinance` · `local` *（仅接受明示为 GBP/GBp 的报价）*
-- **加密** → `okx` · `ccxt` · `binance` · `yfinance` · `local`
-- **外汇 / 贵金属** → `mt5` · `yfinance` · `akshare` · `local` &nbsp;·&nbsp; *(期货 / 基金 / 宏观 → `tushare`/`akshare` → `local`)*
+- **加密** → `okx` · `binance` · `ccxt` · `yfinance` · `local`
+- **外汇 / 贵金属** → `mt5` · `akshare` · `yfinance` · `local`
+- **加拿大 / 越南 / 阿根廷 / 指数** → `yahoo` · `yfinance` · `local`
+- **国内期货** → `akshare` · `local` &nbsp;·&nbsp; **基金** → `tushare` · `akshare` · `local` &nbsp;·&nbsp; **宏观** → `akshare` · `tushare` · `local`
 
 ### 显式使用长桥
 

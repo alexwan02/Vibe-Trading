@@ -469,8 +469,10 @@ vibe-trading connector install /tmp/my-broker
 - **أسهم الهند (NSE/BSE)** → `yahoo` · `yfinance` · `india_broker` · `local`
 - **كوريا (KOSPI/KOSDAQ)** → `pykrx` · `yahoo` · `yfinance` · `local`
 - **المملكة المتحدة (LSE)** → `yahoo` · `yfinance` · `local` *(الأسعار المعلنة بـ GBP/GBp فقط)*
-- **الكريبتو** → `okx` · `ccxt` · `binance` · `yfinance` · `local`
-- **الفوركس / المعادن** → `mt5` · `yfinance` · `akshare` · `local` &nbsp;·&nbsp; *(العقود الآجلة / الصناديق / الاقتصاد الكلي → `tushare`/`akshare` → `local`)*
+- **الكريبتو** → `okx` · `binance` · `ccxt` · `yfinance` · `local`
+- **الفوركس / المعادن** → `mt5` · `akshare` · `yfinance` · `local`
+- **كندا / فيتنام / الأرجنتين / المؤشرات** → `yahoo` · `yfinance` · `local`
+- **العقود الآجلة الصينية** → `akshare` · `local` &nbsp;·&nbsp; **الصناديق** → `tushare` · `akshare` · `local` &nbsp;·&nbsp; **الاقتصاد الكلي** → `akshare` · `tushare` · `local`
 
 ### استخدام Longbridge صراحةً
 
