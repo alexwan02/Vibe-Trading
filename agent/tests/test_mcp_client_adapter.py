@@ -426,7 +426,8 @@ def test_robinhood_dataclass_dates_are_json_safe_end_to_end() -> None:
 
     assert payload["status"] == "ok"
     assert payload["data"] == structured_portfolio
-    assert payload["structured_content"] == structured_portfolio
+    # The agent-facing result carries the value once; ``call_tool`` keeps both.
+    assert "structured_content" not in payload
 
 
 @pytest.mark.parametrize(
@@ -461,7 +462,7 @@ def test_fastmcp_wrapped_results_keep_unwrapped_data_shape(
     )
 
     assert payload["data"] == expected
-    assert payload["structured_content"] == structured
+    assert "structured_content" not in payload
 
 
 @dataclass
@@ -487,7 +488,7 @@ def test_structured_content_remains_available_when_fastmcp_hydration_fails() -> 
 
     assert payload["status"] == "ok"
     assert payload["data"] == structured
-    assert payload["structured_content"] == structured
+    assert "structured_content" not in payload
 
 
 class _OrderState(Enum):

@@ -5,6 +5,49 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Feishu joins the guided Web UI channel setup** (#1572, thanks
+  @shadowinlife). The Feishu panel gets field hints and a setup guide in all
+  nine locales. **Test connection** is a standalone probe that requests a
+  tenant access token from feishu.cn or larksuite.com, whichever the config
+  names, without starting the bot. `stop()` now closes the lark WebSocket and
+  stops its dedicated event loop, so a hot reload no longer leaves the old
+  connection answering messages beside the new one.
+
+### Changed
+
+- **An MCP tool result reaches the agent once, not four times** (#1634, thanks
+  @zeus229). A structured result used to arrive as `data`, an identical
+  `structured_content`, a text block restating it and the joined `text`. Only
+  exact copies of `data` are dropped, and only from what the agent reads;
+  `MCPServerAdapter.call_tool` still returns every surface to programmatic
+  callers, and error or text-only results are unchanged.
+- **Tool-result helpers moved out of `loop.py`** into `src/agent/tool_results.py`
+  (#1636, thanks @Jackzigen), the first extraction of the loop split. The
+  moved functions are byte-identical and `loop` still exports them; their log
+  records now come from the `src.agent.tool_results` logger.
+
+### Fixed
+
+- **Carhart momentum no longer reads today's price** (#1578, thanks
+  @Shizoqua). `academic_carhart_mom` computed the 12-month return minus the
+  1-month return, which moves with today's close — the opposite of skipping
+  the most recent month. It is now the return from 252 to 21 trading days
+  ago, pinned by a test that moves every close in the skipped month and
+  requires the value to stay put.
+- **Profit factor is undefined when no trade lost** (#1602, thanks
+  @davidalmeida90). With no losing trade, `profit_factor` and
+  `profit_loss_ratio` were reported as 0.0, which ranked a run that never lost
+  below every other run. They are now `None` — an empty `metrics.csv` cell and
+  `null` in JSON — in both the daily metrics and the options engine; a run
+  with no closed trade keeps 0.0.
+- **Stooq's challenge page stops every later request, not just the warning**
+  (#1637, thanks @cgycorey). Once Stooq answers with its anti-bot page, the
+  loader returns no data for every remaining symbol in the process without
+  another throttled request, so the fallback chain moves on at once. A new
+  process probes again.
+
 ## [0.1.16] — 2026-09-29
 
 Rolls up 492 commits / 116 merged pull requests since 0.1.15, from 16

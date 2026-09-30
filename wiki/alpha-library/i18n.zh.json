@@ -5,8 +5,8 @@
    "zh": "Frazzini & Pedersen (2014) 低贝塔策略（BAB）。纯价格代理：市场收益率取每日个股收益率的截面均值（等权，而非原文的市值加权）。贝塔为单一 252 日窗口上的 Cov(r_i, r_m) / Var(r_m)（论文分别使用 1y 波动率窗口与 5y 相关系数窗口）。因子得分为负贝塔，经截面 z 分数标准化，使低贝塔标的排名最高，与原文多空构造中的多头腿一致。"
   },
   "academic_carhart_mom": {
-   "en": "Carhart (1997) UMD momentum factor. 12-month return minus 1-month return, cross-sectional z-score per date for long-short ranking. Top z-scores = winners. Constructed directly from prices, so this matches the original definition modulo the z-score wrapper. Canonical 252d window; declared decay_horizon=60 due to registry schema cap (le=60); real signal horizon=252.",
-   "zh": "Carhart (1997) UMD 动量因子。12 个月收益率减去 1 个月收益率，按日期做截面 z 分数，用于多空排名。z 分数最高 = 赢家。直接由价格构造，因此除外层的 z 分数变换外与原始定义一致。采用标准的 252d 窗口；受注册表 schema 上限（le=60）所限，声明 decay_horizon=60；实际信号周期=252。"
+   "en": "Carhart (1997) UMD momentum factor. Return from 12 months ago to 1 month ago, so the most recent month is skipped and today's price never enters; cross-sectional z-score per date for long-short ranking. Top z-scores = winners. Constructed directly from prices, so this matches the original definition modulo the z-score wrapper. Canonical 252d window; declared decay_horizon=60 due to registry schema cap (le=60); real signal horizon=252.",
+   "zh": "Carhart (1997) UMD 动量因子。从 12 个月前到 1 个月前的收益率，跳过最近一个月，当天价格不参与计算；按日期做截面 z 分数，用于多空排名。z 分数最高 = 赢家。直接由价格构造，因此除外层的 z 分数变换外与原始定义一致。采用标准的 252d 窗口；受注册表 schema 上限（le=60）所限，声明 decay_horizon=60；实际信号周期=252。"
   },
   "academic_cma": {
    "en": "[PRICE PROXY] for the Fama-French (2015) CMA (Conservative Minus Aggressive) investment factor. The original definition uses total-asset growth from fundamental data; here we use the negative 60-day change in log average volume as an activity-growth proxy, then cross-sectional z-score per date for long-short ranking. Top z-scores = volume contraction (conservative / low-growth proxy).",

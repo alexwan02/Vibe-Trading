@@ -207,6 +207,38 @@ class TestChallengePageDetection:
         warnings = [r.message for r in caplog.records if "anti-bot challenge" in r.message]
         assert len(warnings) == 1  # two symbols, one warning
 
+    def test_challenge_latch_stops_probing_later_symbols(self, monkeypatch, caplog):
+        """Once challenged, later symbols must not pay another request.
+
+        The warning says the source is "unavailable for the rest of this
+        process", but the latch only gated the log line: a batched US fallback
+        probe still spent one throttled request per missing symbol on an
+        endpoint that can only answer with the challenge page.
+        """
+        monkeypatch.setattr(stooq_loader, "_challenge_warned", False)
+        probed: List[str] = []
+
+        def fake_get(url, **kwargs):
+            probed.append(kwargs["params"]["s"])
+            return _FakeResponse(text=self._CHALLENGE_HTML)
+
+        monkeypatch.setattr(stooq_loader, "throttled_get", fake_get)
+        loader = stooq_loader.DataLoader()
+
+        with caplog.at_level(logging.WARNING, logger="backtest.loaders.stooq_loader"):
+            first = loader.fetch(
+                ["AAPL.US", "MSFT.US", "NVDA.US"], "2024-01-01", "2024-01-31",
+            )
+
+        assert first == {}
+        # One probe establishes the challenge; the other two symbols are not
+        # spent against a source the same process already knows cannot serve.
+        assert probed == ["aapl.us"]
+
+        # A later batch in the same process is answered without any request.
+        assert loader.fetch(["AMZN.US"], "2024-01-01", "2024-01-31") == {}
+        assert probed == ["aapl.us"]
+
     def test_challenge_page_does_not_reach_csv_parser(self, monkeypatch):
         monkeypatch.setattr(stooq_loader, "_challenge_warned", True)  # latch already set
         monkeypatch.setattr(

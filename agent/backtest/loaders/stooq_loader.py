@@ -41,7 +41,10 @@ _DEFAULT_MIN_INTERVAL_S = 0.6
 # Stooq currently answers non-browser clients with a JavaScript proof-of-work
 # challenge page (HTTP 200, HTML body) instead of CSV. Without detection the
 # loader parses it as "no data" and the fallback chain slides past a source
-# that never serves, with nothing in the run log to show for it.
+# that never serves, with nothing in the run log to show for it. The flag is
+# the process-wide latch behind that warning: once the challenge is seen, no
+# further symbol is probed, because a second request can only be answered the
+# same way.
 _challenge_warned = False
 
 
@@ -160,6 +163,13 @@ class DataLoader:
         self, code: str, start_date: str, end_date: str,
     ) -> Optional[pd.DataFrame]:
         """Fetch and parse one symbol's CSV; ``None`` when Stooq has no data."""
+        global _challenge_warned
+        if _challenge_warned:
+            # Latched earlier in this process: the warning already told the
+            # operator the source is unavailable, so spending a throttled
+            # request per remaining symbol (0.6s apart) only delays the chain's
+            # move to the next source. A new process re-probes.
+            return None
         params = {
             "s": map_symbol(code),
             "d1": _compact_date(start_date),
@@ -174,7 +184,6 @@ class DataLoader:
         )
         response.raise_for_status()
         if _looks_like_challenge_page(response.text):
-            global _challenge_warned
             if not _challenge_warned:
                 logger.warning(
                     "stooq is serving an anti-bot challenge page instead of CSV "
