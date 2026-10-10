@@ -2450,7 +2450,7 @@
     "survivorshipBias": "Current index constituents are used; historical results have survivorship bias.",
     "degradedUniverse": "The index roster could not be obtained; this run uses a smaller disclosed fallback universe.",
     "selectedFactor": "Selected factor: {{id}}. Only this factor will be evaluated.",
-    "fundamentalsRequirement": "Fundamental factors need PIT SEC financial statements and a US stock universe (S&P 500).",
+    "fundamentalsRequirement": "Fundamental factors need point-in-time statements: SEC filings with S&P 500, or fundamentals files in your local data bridge with Hong Kong (hk-local).",
     "noEvaluableFactors": "No factors could be evaluated. Try a longer history and check the factor’s required fields and stock universe."
   },
   "customProviders": {

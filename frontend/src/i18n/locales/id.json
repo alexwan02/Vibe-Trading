@@ -2450,7 +2450,7 @@
     "survivorshipBias": "Menggunakan anggota indeks saat ini; hasil historis memiliki bias kelangsungan hidup.",
     "degradedUniverse": "Daftar indeks tidak diperoleh; tugas ini memakai semesta cadangan yang lebih kecil dan diungkapkan.",
     "selectedFactor": "Faktor dipilih: {{id}}. Hanya faktor ini yang dievaluasi.",
-    "fundamentalsRequirement": "Faktor fundamental memerlukan laporan SEC yang aman secara PIT dan semesta saham AS (S&P 500).",
+    "fundamentalsRequirement": "Faktor fundamental memerlukan laporan yang aman secara PIT: SEC dengan S&P 500, atau file fundamental di jembatan data lokal Anda dengan Hong Kong (hk-local).",
     "noEvaluableFactors": "Tidak ada faktor yang dapat dievaluasi. Perpanjang riwayat dan periksa bidang data yang diperlukan serta semesta saham."
   },
   "customProviders": {
