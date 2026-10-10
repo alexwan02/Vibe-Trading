@@ -166,6 +166,22 @@ def is_no_network_fallback_source(source: str) -> bool:
     return source in _NO_NETWORK_FALLBACK_SOURCES
 
 
+def is_offline_benchmark_source(source: str) -> bool:
+    """Whether a run on *source* must resolve its benchmark without the network.
+
+    Narrower than :func:`is_no_network_fallback_source`: only these runs keep
+    the benchmark off the network, so only they hand the engine their own
+    loader for it.
+
+    Args:
+        source: The run's configured data source.
+
+    Returns:
+        True when the benchmark may only come from the run's own loader.
+    """
+    return source == "local"
+
+
 # ---------------------------------------------------------------------------
 # Fallback chains: market_type -> ordered list of source names
 # ---------------------------------------------------------------------------

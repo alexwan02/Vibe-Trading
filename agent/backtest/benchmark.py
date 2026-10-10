@@ -12,6 +12,7 @@ from typing import Any, Optional
 import pandas as pd
 
 from backtest.loaders.base import resample_bars, source_interval
+from backtest.loaders.registry import is_offline_benchmark_source
 from backtest.loaders.yfinance_loader import DataLoader as YfinanceLoader
 from backtest.metrics import bar_returns, buy_and_hold_return
 
@@ -95,7 +96,7 @@ def resolve_benchmark(
     if ticker is None:
         return None
 
-    offline = source == "local"
+    offline = is_offline_benchmark_source(source)
     if offline and getattr(loader, "name", None) != source:
         # The runtime fallback chain in fetch_data_map() may have swapped in a
         # network loader while config["source"] still says local — never fetch

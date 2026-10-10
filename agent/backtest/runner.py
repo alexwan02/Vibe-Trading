@@ -29,6 +29,7 @@ from backtest.loaders.registry import (
     additive_caliber_warning,
     get_loader_cls_with_fallback,
     is_no_network_fallback_source,
+    is_offline_benchmark_source,
     mixed_caliber_warning,
     frame_caliber,
     resolve_loader,
@@ -1306,8 +1307,12 @@ def main(run_dir: Path) -> None:
 
     # Every source has already been fetched, sanitized, and enriched above.
     # Reuse that exact snapshot so provider costs and run-card provenance stay
-    # aligned with the data consumed by the engine.
-    loader = _AutoLoader(data_map)
+    # aligned with the data consumed by the engine. An offline run keeps its
+    # own loader behind the snapshot: a declared benchmark is usually outside
+    # ``codes`` and may not come from the network.
+    loader = _AutoLoader(
+        data_map, inner=loader if is_offline_benchmark_source(source) else None
+    )
 
     if engine_type == "options":
         from backtest.engines.options_portfolio import run_options_backtest
@@ -1959,14 +1964,59 @@ def _sanitize_data_map(data_map: dict) -> dict:
 
 
 class _AutoLoader:
-    """Loader adapter that returns a pre-fetched data map."""
+    """Loader adapter that returns a pre-fetched data map.
 
-    def __init__(self, data_map: dict):
+    With an ``inner`` loader, symbols outside the snapshot are fetched through
+    it, and the adapter carries that loader's ``name`` so the offline guard in
+    ``backtest.benchmark.resolve_benchmark`` accepts it as the run's own
+    source rather than a network loader swapped in by a fallback.
+    """
+
+    def __init__(self, data_map: dict, inner: Any = None) -> None:
+        """Wrap a fetched snapshot.
+
+        Args:
+            data_map: ``code -> DataFrame`` snapshot already consumed by the run.
+            inner: Loader that served the snapshot; consulted only for symbols
+                the snapshot does not hold. ``None`` serves the snapshot alone
+                and exposes no ``name``.
+        """
         self._data = data_map
+        self._inner = inner
+        if inner is not None:
+            self.name = inner.name
 
-    def fetch(self, codes, start_date, end_date, fields=None, interval="1D"):
-        """Return preloaded rows for requested codes."""
-        return {c: df for c, df in self._data.items() if c in codes}
+    def fetch(
+        self,
+        codes: List[str],
+        start_date: str,
+        end_date: str,
+        fields: Optional[List[str]] = None,
+        interval: str = "1D",
+    ) -> dict:
+        """Return snapshot rows, fetching symbols it lacks through ``inner``.
+
+        Frames from ``inner`` go through the same OHLC sanitisation as the
+        snapshot, so a benchmark is held to the bar quality the strategy was.
+
+        Args:
+            codes: Requested symbols.
+            start_date: Window start, passed through to ``inner``.
+            end_date: Window end, passed through to ``inner``.
+            fields: Extra fields, passed through to ``inner``.
+            interval: Bar interval, passed through to ``inner``.
+
+        Returns:
+            ``code -> DataFrame`` for every requested symbol that could be served.
+        """
+        served = {c: df for c, df in self._data.items() if c in codes}
+        missing = [c for c in codes if c not in served]
+        if missing and self._inner is not None:
+            fetched = self._inner.fetch(
+                missing, start_date, end_date, fields=fields, interval=interval
+            )
+            served.update(_sanitize_data_map(fetched))
+        return served
 
 
 if __name__ == "__main__":
