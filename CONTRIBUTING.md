@@ -59,8 +59,9 @@ In Factor Research, select one factor to evaluate only that factor, or several
 to compare them. The full-zoo benchmark remains available; its result display
 limit does not reduce computation. Readiness labels check configuration and
 installed dependencies, not provider availability. CSI 300 requires Tushare
-credentials and access; fundamental factors use US SEC data with point-in-time
-filing dates and require the S&P 500 universe. Results report observed coverage,
+credentials and access; Hong Kong (`hk-local`) uses the `.HK` sources configured
+in your local data bridge. Fundamental factors use US SEC data with
+point-in-time filing dates and require the S&P 500 universe. Results report observed coverage,
 missing symbols and current-constituent survivorship bias. A first large-universe
 download can take minutes; later evaluations reuse the existing panel cache.
 

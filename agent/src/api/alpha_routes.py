@@ -118,7 +118,7 @@ _VALID_UNIVERSES = {
 # Ranking metrics for /alpha/compare — keep in sync with
 # ``src.factors.compare_runner.SORT_KEYS`` (kept local to avoid a heavy import).
 _VALID_SORTS = {"ir", "ic_mean", "ic_positive_ratio", "ic_count"}
-_BENCH_UNIVERSES = {"csi300", "sp500", "btc-usdt"}
+_BENCH_UNIVERSES = {"csi300", "sp500", "btc-usdt", "hk-local"}
 
 
 def _now_iso() -> str:
@@ -406,14 +406,21 @@ def register_alpha_routes(
         """Report configuration and mathematical prerequisites without network probes."""
         from src.config.accessor import get_env_config
         from src.factors.registry import get_default_registry
+        from src.factors.universes.hk_local import bridge_ready
 
         registry = get_default_registry()
         configured = bool(get_env_config().data.tushare_token.strip())
         installed = importlib.util.find_spec("tushare") is not None
+        hk_ready = bridge_ready()
+        hk_local = {
+            "ready": hk_ready,
+            "reason": "local_bridge_ready" if hk_ready else "local_bridge_missing",
+        }
         return {"universes": {
             "csi300": {"ready": configured and installed, "reason": "tushare_ready" if configured and installed else "tushare_token_missing" if not configured else "tushare_dependency_missing"},
             "sp500": {"ready": True, "reason": "public_data"},
             "btc-usdt": {"ready": False, "reason": "single_asset"},
+            "hk-local": hk_local,
         }, "zoo_counts": {zoo: len(registry.list(zoo=zoo)) for zoo in sorted(_VALID_ZOOS)}}
 
     @app.get("/alpha/bench/{job_id}", dependencies=[Depends(require_auth)])
@@ -443,7 +450,12 @@ def register_alpha_routes(
                 detail=f"unknown theme {theme!r}; expected one of {sorted(_VALID_THEMES)}",
             )
         if universe is not None:
-            _ALIAS = {"csi300": "equity_cn", "sp500": "equity_us", "btc-usdt": "crypto"}
+            _ALIAS = {
+                "csi300": "equity_cn",
+                "sp500": "equity_us",
+                "btc-usdt": "crypto",
+                "hk-local": "equity_hk",
+            }
             universe = _ALIAS.get(universe, universe)
         if universe is not None and universe not in _VALID_UNIVERSES:
             raise HTTPException(
