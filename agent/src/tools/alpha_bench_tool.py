@@ -81,6 +81,7 @@ _UNIVERSE_TAG = {
     "csi300": "equity_cn",
     "sp500": "equity_us",
     "btc-usdt": "crypto",
+    "hk-local": "equity_hk",
 }
 
 
@@ -115,14 +116,16 @@ def _load_universe_panel(
     with one column per instrument.
 
     Args:
-        universe: ``csi300`` | ``sp500`` | ``btc-usdt``.
+        universe: ``csi300`` | ``sp500`` | ``btc-usdt`` | ``hk-local``.
         period: ``YYYY-YYYY`` or ``YYYY-MM-DD/YYYY-MM-DD``.
         use_cache: When True (default) reuse a pickle in
             ``~/.vibe-trading/cache/`` if the same universe+period was fetched
-            before. Set to False to force a re-fetch.
+            before. Set to False to force a re-fetch. ``hk-local`` also keys
+            the pickle on the bridge config and the files it points at.
 
     Raises:
-        ValueError: unknown universe or bad period.
+        ValueError: unknown universe, bad period, or an ``hk-local`` bridge
+            config with no ``.HK`` source.
         RuntimeError: ``TUSHARE_TOKEN`` unset when csi300 is requested.
     """
     if universe not in _UNIVERSE_TAG:
@@ -132,7 +135,14 @@ def _load_universe_panel(
     start, end = _parse_period(period)
 
     cache_dir = get_runtime_root() / "cache"
-    cache_path = cache_dir / f"{universe}_{start}_{end}.pkl"
+    cache_stem = f"{universe}_{start}_{end}"
+    bridge = None
+    if universe == "hk-local":
+        from src.factors.universes import hk_local
+
+        bridge = hk_local.open_bridge()
+        cache_stem += f"_{hk_local.cache_fingerprint(bridge)}"
+    cache_path = cache_dir / f"{cache_stem}.pkl"
     if use_cache and cache_path.is_file():
         cached = _read_pickle_cache(cache_path)
         if cached is not None:
@@ -145,6 +155,8 @@ def _load_universe_panel(
         panel = _load_sp500_panel(start, end)
     elif universe == "btc-usdt":
         panel = _load_btc_panel(start, end)
+    elif universe == "hk-local" and bridge is not None:
+        panel = hk_local.load_panel(bridge, start, end)
     else:  # pragma: no cover — guarded above
         raise ValueError(f"unhandled universe {universe!r}")
 
@@ -1486,7 +1498,11 @@ class AlphaBenchTool(BaseTool):
             },
             "universe": {
                 "type": "string",
-                "description": "csi300 | sp500 | btc-usdt (resolved via existing data tools).",
+                "description": (
+                    "csi300 | sp500 | btc-usdt | hk-local (resolved via existing "
+                    "data tools; hk-local reads the .HK sources in the local "
+                    "data bridge)."
+                ),
             },
             "period": {
                 "type": "string",
