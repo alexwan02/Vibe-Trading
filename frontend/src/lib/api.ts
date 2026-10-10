@@ -1847,7 +1847,7 @@ export interface AlphaDataMeta {
   fetched_instruments?: number;
   requested_instruments?: number;
   missing_instruments?: string[];
-  survivorship_bias?: boolean;
+  survivorship_bias?: boolean | null;
   degraded?: boolean;
 }
 
