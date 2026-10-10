@@ -80,6 +80,7 @@ const UNIVERSE_OPTIONS = [
   { value: "csi300" },
   { value: "sp500" },
   { value: "btc-usdt" },
+  { value: "hk-local" },
 ];
 
 // Metadata universe -> the benchmark universe whose panel represents it. Markets
@@ -88,6 +89,7 @@ const BENCH_UNIVERSE_FOR_METADATA: Record<string, string> = {
   equity_cn: "csi300",
   equity_us: "sp500",
   crypto: "btc-usdt",
+  equity_hk: "hk-local",
 };
 
 // Factor-metadata universes for the browse filter; GET /alpha/list filters on
@@ -511,7 +513,7 @@ function DetailView({ alphaId }: DetailProps) {
   const formulaLatex = (meta["formula_latex"] as string | undefined) || "";
   const nickname = (meta["nickname"] as string | undefined) || "";
   // An alpha's metadata universes (equity_us, equity_kr, ...) are not bench
-  // universes; only the three names with panel loaders are. Translate, and drop
+  // universes; only the names with panel loaders are. Translate, and drop
   // the prefill when the alpha's markets have no benchmark panel (Korea, India)
   // rather than handing BenchView a value its selector cannot hold.
   const benchUniverse = (((meta["universe"] as string[] | undefined) || [])
@@ -1276,7 +1278,7 @@ function ReadinessPanel({ readiness, universe, count }: { readiness: ReturnType<
     <p>{i18n.t("analysis.evaluationScope", { count: count ?? "–" })}</p>
     <p className={info?.ready ? "text-muted-foreground" : "text-warning"}>{info ? i18n.t(`analysis.ready_${info.reason}`) : readiness.error || i18n.t("analysis.checkingData")}</p>
     {readiness.error && <button onClick={readiness.retry} className="text-primary underline">{i18n.t("connection.retry")}</button>}
-    {info && !info.ready && universe !== "btc-usdt" && <Link to="/settings" className="inline-block text-primary underline">{i18n.t("layout.settings")}</Link>}
+    {info && !info.ready && universe !== "btc-usdt" && universe !== "hk-local" && <Link to="/settings" className="inline-block text-primary underline">{i18n.t("layout.settings")}</Link>}
   </div>;
 }
 
