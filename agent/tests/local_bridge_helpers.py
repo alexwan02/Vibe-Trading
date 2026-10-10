@@ -77,7 +77,7 @@ HK_SYMBOLS = ("0001.HK", "0002.HK", "0003.HK")
 
 
 def daily_rows(
-    start: str = "2024-01-01", periods: int = 6, base: float = 10.0
+    start: str = "2024-01-01", periods: int = 8, base: float = 10.0
 ) -> list[dict[str, Any]]:
     """Valid daily bars with ``amount``, rising by one tick a day."""
     rows = []

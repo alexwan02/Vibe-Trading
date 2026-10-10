@@ -2376,7 +2376,7 @@
     "survivorshipBias": "Se usan los componentes actuales del índice; los resultados históricos tienen sesgo de supervivencia.",
     "degradedUniverse": "No se obtuvo la lista del índice; esta ejecución usa un universo alternativo más pequeño y declarado.",
     "selectedFactor": "Factor seleccionado: {{id}}. Solo se evaluará este factor.",
-    "fundamentalsRequirement": "Los factores fundamentales necesitan estados SEC seguros en el tiempo y un universo de acciones de EE. UU. (S&P 500).",
+    "fundamentalsRequirement": "Los factores fundamentales necesitan estados seguros en el tiempo: SEC con S&P 500, o archivos de fundamentales de tu puente de datos local con Hong Kong (hk-local).",
     "noEvaluableFactors": "No se pudo evaluar ningún factor. Amplía el historial y comprueba los campos requeridos y el universo de acciones."
   },
   "customProviders": {

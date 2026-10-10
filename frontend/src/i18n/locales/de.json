@@ -2376,7 +2376,7 @@
     "survivorshipBias": "Es werden aktuelle Indexmitglieder verwendet; historische Ergebnisse haben einen Überlebensbias.",
     "degradedUniverse": "Die Indexliste war nicht verfügbar; dieser Lauf nutzt ein offengelegtes kleineres Ersatzuniversum.",
     "selectedFactor": "Gewählter Faktor: {{id}}. Nur dieser Faktor wird bewertet.",
-    "fundamentalsRequirement": "Fundamentalfaktoren benötigen PIT-sichere SEC-Abschlüsse und ein US-Aktienuniversum (S&P 500).",
+    "fundamentalsRequirement": "Fundamentalfaktoren benötigen PIT-sichere Abschlüsse: SEC-Abschlüsse mit S&P 500 oder Fundamentaldateien der lokalen Datenbrücke mit Hongkong (hk-local).",
     "noEvaluableFactors": "Keine Faktoren konnten bewertet werden. Längeren Verlauf wählen und erforderliche Datenfelder sowie Aktienuniversum prüfen."
   },
   "customProviders": {
