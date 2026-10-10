@@ -2,7 +2,8 @@
 
 Configuration lives at ``~/.vibe-trading/data-bridge/config.yaml``.
 Each entry maps a symbol to a data file with optional column-name overrides,
-date format, and (for DuckDB) an SQL query.
+date format, and (for DuckDB) an SQL query. Besides OHLCV, an ``amount``
+column (turnover in quote currency) is kept when the file carries one.
 
 ``invalid_bars`` decides what happens to bars that fail the OHLC structural
 invariants: ``drop`` (default), ``warn`` (keep the bar and log), or ``raise``
@@ -112,7 +113,12 @@ _OHLCV_AGG = {
     "low": "min",
     "close": "last",
     "volume": "sum",
+    "amount": "sum",
 }
+
+# Bumped whenever the columns a reader returns change, so an opt-in cache
+# written by an older reader is not served in place of the current shape.
+_READER_SCHEMA_VERSION = 2
 
 
 def _resample_to_interval(df: pd.DataFrame, interval: str, symbol: str) -> pd.DataFrame:
@@ -155,7 +161,8 @@ def _resample_to_interval(df: pd.DataFrame, interval: str, symbol: str) -> pd.Da
             if target == source:
                 return df
 
-    resampled = df.resample(rule).agg(_OHLCV_AGG)
+    agg = {col: how for col, how in _OHLCV_AGG.items() if col in df.columns}
+    resampled = df.resample(rule).agg(agg)
     resampled = resampled.dropna(subset=["open", "high", "low", "close"])
     resampled.index.name = df.index.name
     return resampled
@@ -179,6 +186,7 @@ def _source_cache_identity(
         for key in ("type", "path", "db_path", "query", "date_format")
     }
     identity["invalid_bars"] = invalid_bars
+    identity["reader_schema"] = _READER_SCHEMA_VERSION
     columns = entry.get("columns")
     identity["columns"] = (
         sorted(
@@ -286,6 +294,10 @@ def _normalize_columns(
     ohlcv_cols: list[str] = ["open", "high", "low", "close"]
     if "volume" in df.columns:
         ohlcv_cols.append("volume")
+    # Turnover in quote currency. Factors that declare ``amount`` are skipped
+    # when it is missing, so dropping it here would hide data the file holds.
+    if "amount" in df.columns:
+        ohlcv_cols.append("amount")
 
     df = df[ohlcv_cols]
     for col in ohlcv_cols:
@@ -406,6 +418,28 @@ class DataLoader:
         sources = config.get("sources")
         return isinstance(sources, list) and len(sources) > 0
 
+    def configured_symbols(self) -> list[str]:
+        """Return every symbol the bridge config declares, sorted."""
+        self._ensure_config()
+        return sorted(self._source_by_symbol)
+
+    def source_entry(self, symbol: str) -> dict[str, Any] | None:
+        """Return a copy of the config entry for ``symbol``, or None."""
+        self._ensure_config()
+        entry = self._source_by_symbol.get(symbol)
+        return dict(entry) if entry is not None else None
+
+    def config_digest(self) -> str:
+        """Return a hash of the loaded bridge config.
+
+        Callers that cache anything derived from the bridge key it on this, so
+        an edited config (another file, another column map) is not served from
+        a cache built against the old one.
+        """
+        self._ensure_config()
+        payload = json.dumps(self._config, sort_keys=True, default=str)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
     def _ensure_config(self) -> None:
         if self._config is not None:
             return
@@ -435,7 +469,8 @@ class DataLoader:
             fields: Ignored.
 
         Returns:
-            Mapping clean_symbol -> OHLCV DataFrame.
+            Mapping clean_symbol -> OHLCV DataFrame, plus ``amount`` when the
+            source carries it.
 
         Raises:
             InvalidBarsError: A source set to ``invalid_bars: raise`` holds a
