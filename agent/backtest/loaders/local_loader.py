@@ -45,6 +45,29 @@ Example config::
         type: duckdb
         db_path: "~/data/market.duckdb"
         query: "SELECT * FROM prices WHERE ticker = 'MYINDEX'"
+
+      - symbol: "0700.HK"
+        type: parquet
+        path: "~/data/0700.parquet"
+        fundamentals: "~/data/0700_fundamentals.parquet"   # optional
+        sector_table: "~/data/hk_sectors.parquet"          # optional
+
+This loader reads only the price file. The ``hk-local`` alpha-bench universe
+(``src.factors.universes.hk_local``) also reads two optional keys on ``.HK``
+entries:
+
+- ``fundamentals``: Parquet, one row per reported period. ``known_at`` (the
+  date the numbers became public) is required; ``period`` identifies the
+  reporting period, and when it repeats the earliest ``known_at`` wins.
+  Every other numeric column becomes ``fund:<column>``; ``valid_until``,
+  ``currency``, ``decay_horizon`` and ``*_json`` columns are skipped. Values
+  are used as reported, with no currency conversion, so a ratio that mixes
+  them with prices (such as earnings yield) is only meaningful when
+  the reporting currency matches the trading currency.
+- ``sector_table``: Parquet with ``code`` (the configured symbol) and
+  ``sector`` columns, one table for the whole market. Entries normally point
+  at the same file; when they name different files the first in sorted order
+  is used.
 """
 
 from __future__ import annotations
