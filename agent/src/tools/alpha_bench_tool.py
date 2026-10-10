@@ -80,6 +80,7 @@ _PERIOD_DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})/(\d{4}-\d{2}-\d{2})$")
 _UNIVERSE_TAG = {
     "csi300": "equity_cn",
     "sp500": "equity_us",
+    "hk-local": "equity_hk",
 }
 
 
@@ -114,21 +115,23 @@ def _load_universe_panel(
     with one column per instrument.
 
     Args:
-        universe: ``csi300`` | ``sp500``. ``btc-usdt`` is single-asset and
-            rejected before cache or data access.
+        universe: ``csi300`` | ``sp500`` | ``hk-local``. ``btc-usdt`` is
+            single-asset and rejected before cache or data access.
         period: ``YYYY-YYYY`` or ``YYYY-MM-DD/YYYY-MM-DD``.
         use_cache: When True (default) reuse a pickle in
             ``~/.vibe-trading/cache/`` if the same universe+period was fetched
-            before. Set to False to force a re-fetch.
+            before. Set to False to force a re-fetch. ``hk-local`` also keys
+            the pickle on the bridge config and the files it points at.
 
     Raises:
-        ValueError: Unsupported universe or invalid period.
+        ValueError: unknown universe, bad period, or an ``hk-local`` bridge
+            config with no ``.HK`` source.
         RuntimeError: ``TUSHARE_TOKEN`` unset when csi300 is requested.
     """
     if universe == "btc-usdt":
         raise ValueError(
             "btc-usdt is single-asset; cross-sectional IC needs >=2 instruments. "
-            "Supported bench universes: csi300, sp500."
+            "Supported bench universes: csi300, sp500, hk-local."
         )
     if universe not in _UNIVERSE_TAG:
         raise ValueError(
@@ -137,7 +140,14 @@ def _load_universe_panel(
     start, end = _parse_period(period)
 
     cache_dir = get_runtime_root() / "cache"
-    cache_path = cache_dir / f"{universe}_{start}_{end}.pkl"
+    cache_stem = f"{universe}_{start}_{end}"
+    bridge = None
+    if universe == "hk-local":
+        from src.factors.universes import hk_local
+
+        bridge = hk_local.open_bridge()
+        cache_stem += f"_{hk_local.cache_fingerprint(bridge)}"
+    cache_path = cache_dir / f"{cache_stem}.pkl"
     if use_cache and cache_path.is_file():
         cached = _read_pickle_cache(cache_path)
         if cached is not None:
@@ -148,6 +158,8 @@ def _load_universe_panel(
         panel = _load_csi300_panel(start, end)
     elif universe == "sp500":
         panel = _load_sp500_panel(start, end)
+    elif universe == "hk-local" and bridge is not None:
+        panel = hk_local.load_panel(bridge, start, end)
     else:  # pragma: no cover — guarded above
         raise ValueError(f"unhandled universe {universe!r}")
 
@@ -1465,9 +1477,10 @@ class AlphaBenchTool(BaseTool):
             "universe": {
                 "type": "string",
                 "description": (
-                    "csi300 | sp500. btc-usdt is single-asset and is rejected before "
-                    "data loading. Alphas requiring fund:* SEC filings need sp500; "
-                    "elsewhere they are excluded."
+                    "csi300 | sp500 | hk-local. btc-usdt is single-asset and is "
+                    "rejected before data loading. hk-local reads the .HK sources in "
+                    "the local data bridge. Alphas requiring fund:* SEC filings need "
+                    "sp500; elsewhere they are excluded."
                 ),
             },
             "period": {

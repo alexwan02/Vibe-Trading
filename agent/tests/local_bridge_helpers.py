@@ -71,3 +71,57 @@ def fetch_symbol(
 ) -> pd.DataFrame | None:
     """Fetch one symbol through a fresh loader."""
     return local_loader.DataLoader().fetch([symbol], start, end).get(symbol)
+
+
+HK_SYMBOLS = ("0001.HK", "0002.HK", "0003.HK")
+
+
+def daily_rows(
+    start: str = "2024-01-01", periods: int = 6, base: float = 10.0
+) -> list[dict[str, Any]]:
+    """Valid daily bars with ``amount``, rising by one tick a day."""
+    rows = []
+    for step, day in enumerate(pd.bdate_range(start, periods=periods)):
+        close = base + 0.1 * step
+        rows.append(
+            {
+                "date": day.strftime("%Y-%m-%d"),
+                "open": close - 0.05,
+                "high": close + 0.2,
+                "low": close - 0.2,
+                "close": close,
+                "volume": 1000 + step,
+                "amount": close * (1000 + step),
+            }
+        )
+    return rows
+
+
+def write_hk_bridge(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    with_amount: bool = True,
+    extra: dict[str, dict[str, Any]] | None = None,
+) -> Path:
+    """Bridge with three ``.HK`` names and one US name, each in its own file.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture.
+        tmp_path: Directory for the files and the config.
+        with_amount: Whether the price files carry ``amount``.
+        extra: Per-symbol keys merged into that symbol's config entry.
+
+    Returns:
+        Path of the written config.
+    """
+    sources = []
+    for offset, symbol in enumerate((*HK_SYMBOLS, "AAPL.US")):
+        rows = daily_rows(base=10.0 * (offset + 1))
+        if not with_amount:
+            rows = [{k: v for k, v in r.items() if k != "amount"} for r in rows]
+        path = write_bars(tmp_path / f"{symbol}.parquet", rows)
+        entry = {"symbol": symbol, "type": "parquet", "path": str(path)}
+        entry.update((extra or {}).get(symbol, {}))
+        sources.append(entry)
+    return point_bridge_at(monkeypatch, tmp_path, {"sources": sources})

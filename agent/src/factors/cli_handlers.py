@@ -90,8 +90,9 @@ def _load_cli_env() -> None:
     except Exception:
         pass
 
-# Cross-sectional benchmark universes with a panel loader.
-_UNIVERSE_CHOICES = ["csi300", "sp500"]
+# Cross-sectional benchmark universes with a panel loader. ``hk-local`` reads
+# the .HK sources in the local data bridge.
+_UNIVERSE_CHOICES = ["csi300", "sp500", "hk-local"]
 
 # Per-row fields that only ``bench_runner_strict`` produces. They are the
 # statistics ``categorise_strict`` actually gates on, so a strict run that
@@ -120,6 +121,7 @@ _LIST_UNIVERSE_ALIASES = {
     "csi300": "equity_cn",
     "sp500": "equity_us",
     "btc-usdt": "crypto",
+    "hk-local": "equity_hk",
 }
 
 
