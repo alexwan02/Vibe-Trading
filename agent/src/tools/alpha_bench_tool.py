@@ -55,7 +55,10 @@ _SP500_CONSTITUENT_SOURCE_DATE = "2026-05-17"
 # Below this share of named sectors the tag is worse than absent: one
 # "unknown" bucket demeans as a single group, which is the global fallback
 # the alphas already have, but reported as industry neutralization.
-_SP500_MIN_SECTOR_COVERAGE = 0.9
+_MIN_SECTOR_COVERAGE = 0.9
+
+# Universes whose panel loader fills ``fund:*`` from the local data bridge.
+_BRIDGE_FUNDAMENTAL_UNIVERSES = frozenset({"hk-local"})
 
 # Concurrent Tushare ``pro.daily`` fetches when building CSI300. Free tier
 # allows ~200 calls/min; 4 workers stays well under that with a 300-name list.
@@ -540,7 +543,7 @@ def _load_sp500_panel(start: str, end: str) -> dict[str, pd.DataFrame]:
         sector_coverage = sum(1 for label in labels if label) / len(labels)
         # A mostly-unlabelled panel would demean one big "unknown" bucket, which
         # is the global-demean fallback wearing a sector tag. Say so instead.
-        if sector_coverage >= _SP500_MIN_SECTOR_COVERAGE:
+        if sector_coverage >= _MIN_SECTOR_COVERAGE:
             panel["sector"] = pd.DataFrame(
                 np.repeat(
                     np.array([label or "UNKNOWN" for label in labels], dtype=object)[None, :],
@@ -555,7 +558,7 @@ def _load_sp500_panel(start: str, end: str) -> dict[str, pd.DataFrame]:
                 "sp500: sector coverage %.1f%% below %.0f%% — leaving the tag off "
                 "so industry-neutralized alphas skip rather than demean one bucket",
                 sector_coverage * 100,
-                _SP500_MIN_SECTOR_COVERAGE * 100,
+                _MIN_SECTOR_COVERAGE * 100,
             )
 
     # Attach a non-DataFrame metadata blob. Registry.compute() only iterates
@@ -707,13 +710,18 @@ def _validate_bench_data_requirements(registry: Any, alpha_ids: list[str], unive
         Required fundamental column names.
 
     Raises:
-        ValueError: If US-only SEC inputs are requested from another universe.
+        ValueError: If fundamental inputs are requested from a universe that
+            has no fundamentals source.
     """
     columns = sorted({column for aid in alpha_ids
                       for column in (registry.get(aid).meta or {}).get("columns_required", [])
                       if column.startswith("fund:")})
-    if columns and universe != "sp500":
-        raise ValueError("Fundamental factor evaluation currently uses SEC US filings. Choose the S&P 500 universe.")
+    has_source = universe == "sp500" or universe in _BRIDGE_FUNDAMENTAL_UNIVERSES
+    if columns and not has_source:
+        raise ValueError(
+            "Fundamental factor evaluation uses SEC US filings (sp500) or the "
+            "local data bridge (hk-local). Choose one of those universes."
+        )
     return columns
 
 
@@ -882,10 +890,10 @@ def _prepare_bench_panel(registry: Any, alpha_ids: list[str], panel: dict, unive
         registry: Registry holding the factors being evaluated.
         alpha_ids: Selected factor identifiers.
         panel: Observed price panel; never mutated or filled with invented values.
-        universe: Stock universe; SEC fundamentals currently cover US stocks,
-            ``val:*`` daily valuation columns and the PIT ``sector`` tag cover
-            the CN universe only — other universes skip them and declaring
-            alphas SkipAlpha.
+        universe: Stock universe; SEC fundamentals cover US stocks, bridge
+            universes carry their own ``fund:*`` columns, and ``val:*`` daily
+            valuation columns and the PIT ``sector`` tag cover the CN universe
+            only — other universes skip them and declaring alphas SkipAlpha.
         period: Requested historical period.
 
     Returns:
@@ -894,11 +902,17 @@ def _prepare_bench_panel(registry: Any, alpha_ids: list[str], panel: dict, unive
         label frame.
 
     Raises:
-        ValueError: If SEC inputs are requested for a non-US universe, or a
-            ``val:`` field is outside the daily_basic whitelist.
+        ValueError: If fundamental inputs are requested from a universe that
+            has no fundamentals source, or a ``val:`` field is outside the
+            daily_basic whitelist.
         RuntimeError: If fewer than two stocks have the required financial inputs.
     """
     columns = [column for column in _validate_bench_data_requirements(registry, alpha_ids, universe) if column not in panel]
+    if universe in _BRIDGE_FUNDAMENTAL_UNIVERSES:
+        # Bridge universes bring their own ``fund:*`` columns; a field the
+        # bridge lacks makes those alphas skip instead of pulling US filings
+        # for non-US names.
+        columns = []
     val_columns = _val_columns_required(registry, alpha_ids, panel) if universe == "csi300" else []
     needs_sector = (
         universe == "csi300"

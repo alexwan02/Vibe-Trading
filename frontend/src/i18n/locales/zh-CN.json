@@ -2408,7 +2408,7 @@
     "survivorshipBias": "使用当前指数成分股，历史结果存在幸存者偏差。",
     "degradedUniverse": "无法取得指数成分股名单，本次使用已披露的较小备用股票池。",
     "selectedFactor": "已选因子：{{id}}，本次只评测这一项。",
-    "fundamentalsRequirement": "基本面因子需要 PIT 安全的 SEC 财务报表，请选择美股股票池（标普 500）。",
+    "fundamentalsRequirement": "基本面因子需要 PIT 安全的财务数据：标普 500 使用 SEC 财报，港股（hk-local）使用本地数据桥中的基本面文件。",
     "noEvaluableFactors": "没有可评测的因子。请尝试更长的历史区间，并核对因子所需的数据字段和股票池。"
   },
   "customProviders": {

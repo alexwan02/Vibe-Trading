@@ -2408,7 +2408,7 @@
     "survivorshipBias": "현재 지수 구성종목을 사용하므로 과거 결과에 생존 편향이 있습니다.",
     "degradedUniverse": "지수 구성종목 목록을 가져오지 못해 공개된 작은 대체 유니버스를 사용합니다.",
     "selectedFactor": "선택 팩터: {{id}}. 이 팩터만 평가합니다.",
-    "fundamentalsRequirement": "기본적 팩터에는 PIT 안전 SEC 재무제표와 미국 주식 유니버스(S&P 500)가 필요합니다.",
+    "fundamentalsRequirement": "기본적 팩터에는 PIT 안전 재무 데이터가 필요합니다. S&P 500은 SEC 재무제표를, 홍콩(hk-local)은 로컬 데이터 브리지의 기본 데이터 파일을 사용합니다.",
     "noEvaluableFactors": "평가 가능한 팩터가 없습니다. 기간을 늘리고 필요한 데이터 필드와 주식 유니버스를 확인하세요."
   },
   "customProviders": {

@@ -2408,7 +2408,7 @@
     "survivorshipBias": "Güncel endeks bileşenleri kullanılır; tarihsel sonuçlar hayatta kalma yanlılığı içerir.",
     "degradedUniverse": "Endeks listesi alınamadı; bu çalıştırma açıklanmış daha küçük bir yedek evren kullanır.",
     "selectedFactor": "Seçilen faktör: {{id}}. Yalnızca bu faktör değerlendirilecek.",
-    "fundamentalsRequirement": "Temel faktörler, o tarihte erişilebilir SEC finansal tablolarını ve bir ABD hisse evrenini (S&P 500) gerektirir.",
+    "fundamentalsRequirement": "Temel faktörler, o tarihte erişilebilir finansal tablolar gerektirir: S&P 500 ile SEC dosyaları veya Hong Kong (hk-local) ile yerel veri köprünüzdeki fundamentals dosyaları.",
     "noEvaluableFactors": "Hiçbir faktör değerlendirilemedi. Daha uzun geçmiş deneyin; faktörün gerekli alanlarını ve hisse evrenini kontrol edin."
   },
   "customProviders": {

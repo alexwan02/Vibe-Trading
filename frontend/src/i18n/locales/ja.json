@@ -2408,7 +2408,7 @@
     "survivorshipBias": "現在の指数構成銘柄を使用するため、過去の結果には生存者バイアスがあります。",
     "degradedUniverse": "指数の銘柄一覧を取得できず、開示された小規模な代替ユニバースを使用します。",
     "selectedFactor": "選択した因子：{{id}}。この因子のみ評価します。",
-    "fundamentalsRequirement": "基本面因子にはPIT安全なSEC財務情報と米国株ユニバース（S&P 500）が必要です。",
+    "fundamentalsRequirement": "基本面因子にはPIT安全な財務情報が必要です。S&P 500ではSEC財務情報、香港株（hk-local）ではローカルデータブリッジの基本面ファイルを使います。",
     "noEvaluableFactors": "評価できる因子がありません。期間を延ばし、必要なデータ項目と株式ユニバースを確認してください。"
   },
   "customProviders": {
