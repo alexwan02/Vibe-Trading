@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from dataclasses import asdict, fields
 from typing import Any
 
 from src.agent.tools import BaseTool
@@ -15,6 +15,11 @@ from src.strategy_store.models import (
     ValidationStatus,
 )
 from src.strategy_store._shared import get_store as _get_store
+
+#: Horizon an artifact gets when the registration does not state one.
+_DEFAULT_DECAY_HORIZON: int = next(
+    f.default for f in fields(Artifact) if f.name == "decay_horizon"
+)
 
 
 def _ok(payload: dict[str, Any]) -> str:
@@ -107,6 +112,14 @@ class SdmRegisterTool(BaseTool):
                 "type": "string",
                 "description": (
                     "How capital is allocated across selections (strategy only)"
+                ),
+            },
+            "decay_horizon": {
+                "type": "integer",
+                "minimum": 1,
+                "description": (
+                    "Recommended holding period of the signal in trading days. "
+                    f"Defaults to {_DEFAULT_DECAY_HORIZON} when omitted."
                 ),
             },
             "signal_engine_path": {
@@ -225,6 +238,7 @@ class SdmRegisterTool(BaseTool):
                 signal_engine_path=kwargs.get("signal_engine_path"),
                 hypothesis_id=kwargs.get("hypothesis_id"),
                 status=ArtifactStatus.CREATED,
+                **self._decay_horizon_kwargs(kwargs),
                 **self._governance_kwargs(kwargs),
             )
 
@@ -233,6 +247,40 @@ class SdmRegisterTool(BaseTool):
             return _ok({"artifact": asdict(stored)})  # type: ignore[arg-type]
         except Exception as exc:
             return _error(exc)
+
+    def _decay_horizon_kwargs(self, kwargs: dict[str, Any]) -> dict[str, int]:
+        """Validate the optional ``decay_horizon`` argument.
+
+        An omitted horizon is left out entirely so the ``Artifact`` default
+        applies; passing ``None`` through would store a null horizon instead.
+
+        Args:
+            kwargs: Raw tool arguments.
+
+        Returns:
+            ``{"decay_horizon": n}`` when supplied, otherwise an empty dict.
+
+        Raises:
+            ValueError: If the horizon is not a whole number of at least one
+                trading day.
+        """
+        raw = kwargs.get("decay_horizon")
+        if raw is None:
+            return {}
+        not_whole = ValueError(
+            f"decay_horizon must be a whole number of trading days, got {raw!r}"
+        )
+        if isinstance(raw, bool) or not isinstance(raw, (int, str)):
+            raise not_whole
+        try:
+            horizon = int(raw)
+        except ValueError:
+            raise not_whole from None
+        if horizon < 1:
+            raise ValueError(
+                f"decay_horizon must be at least 1 trading day, got {horizon}"
+            )
+        return {"decay_horizon": horizon}
 
     def _governance_kwargs(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         """Extract the model-governance fields, enforcing the pair that matters.
