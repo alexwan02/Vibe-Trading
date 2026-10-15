@@ -1,7 +1,7 @@
 """Forward attempt status to IM adapters without releasing unchecked answers."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from src.channels.bus.events import InboundMessage, OutboundMessage
 
@@ -10,12 +10,14 @@ class AttemptProgress:
     """Poll buffered session events with an attempt-scoped replay cursor."""
 
     def __init__(self, bus: Any, event_bus: Any, msg: InboundMessage,
-                 session_id: str, attempt_id: str) -> None:
+                 session_id: str, attempt_id: str,
+                 is_visible: Callable[..., bool] | None = None) -> None:
         self.bus = bus
         self.events = event_bus
         self.msg = msg
         self.session_id = session_id
         self.attempt_id = attempt_id
+        self.is_visible = is_visible
         self.cursor: str | None = None
         self.streaming = bool(msg.metadata.get("_wants_stream"))
         self.stream_started = False
@@ -67,10 +69,14 @@ class AttemptProgress:
             }.get(kind)
             # Arbitrary progress payloads, tool results and text_delta may
             # contain unvalidated figures. Only these status labels go out.
+            hint = kind in {"tool_call", "tool_heartbeat"}
             if not status or status == self.last_status:
                 continue
+            # A status the channel hides must not become last_status, or the
+            # next visible repeat of the previous status is not deduped.
+            if self.is_visible is not None and not self.is_visible(tool_hint=hint):
+                continue
             self.last_status = status
-            hint = kind in {"tool_call", "tool_heartbeat"}
             flags = {"_progress": True, "_tool_hint": hint}
             if self.streaming:
                 flags["_stream_delta"] = True

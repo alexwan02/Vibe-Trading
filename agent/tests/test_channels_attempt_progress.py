@@ -1,5 +1,6 @@
 """Session events reach IM during a run, without leaking unchecked answers."""
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from src.channels.bus.events import InboundMessage
@@ -113,4 +114,46 @@ def test_real_reasoning_tails_are_incremental_and_redaction_stays_private():
         assert reasoning == "Hello world"
         assert any(m.content == "Reasoning…\n" for m in sent)
         assert any(m.content == "Waiting for the model…\n" for m in sent)
+    asyncio.run(scenario())
+
+
+def test_hidden_tool_hints_do_not_break_status_dedupe():
+    from src.channels.attempt_progress import AttemptProgress
+
+    async def scenario():
+        bus, events = MessageBus(), EventBus()
+        message = InboundMessage(channel="feishu", chat_id="c", sender_id="u", content="q", metadata={})
+        progress = AttemptProgress(bus, events, message, "s", "a",
+                                   is_visible=lambda *, tool_hint: not tool_hint)
+        for kind, data in [
+            ("llm_waiting", {"iter": 1}),
+            ("tool_call", {"tool": "session_search"}),
+            ("llm_waiting", {"iter": 2}),
+            ("tool_call", {"tool": "read_file"}),
+            ("llm_waiting", {"iter": 3}),
+        ]:
+            events.emit("s", kind, {**data, "attempt_id": "a"})
+        await progress.poll()
+        sent = []
+        while bus.outbound_size:
+            sent.append(await bus.consume_outbound())
+        assert [m.content for m in sent] == ["Waiting for the model…\n"]
+    asyncio.run(scenario())
+
+
+def test_runtime_applies_the_channel_progress_settings(tmp_path):
+    async def scenario():
+        bus, service = MessageBus(), _Service()
+        manager = ChannelManager({}, bus)
+        # Channel defaults: progress shown, tool hints hidden.
+        manager.channels['feishu'] = SimpleNamespace(send_progress=True, send_tool_hints=False)
+        runtime = ChannelRuntime(bus=bus, session_service=service, manager=manager,
+                                 session_map_path=tmp_path/'sessions.json', poll_interval_s=.001)
+        service.messages.append(Message(session_id='s', role='assistant', content='Checked answer', linked_attempt_id='a'))
+        await runtime._handle_inbound(InboundMessage(channel='feishu', chat_id='c', sender_id='u', content='q', metadata={}))
+        contents = []
+        while bus.outbound_size:
+            contents.append((await bus.consume_outbound()).content)
+        assert 'Working on your request…\n' in contents
+        assert not any('Using get_market_data' in c for c in contents)
     asyncio.run(scenario())
