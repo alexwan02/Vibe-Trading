@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from src.strategy_store.models import Artifact
 from src.tools.sdm_register_tool import SdmRegisterTool
 
 RULE_FIELDS = ("entry_rules", "exit_rules", "position_sizing")
@@ -25,14 +27,18 @@ def tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SdmRegisterTool:
     return SdmRegisterTool()
 
 
-def _register(tool: SdmRegisterTool, **kwargs: Any) -> dict[str, Any]:
+def _execute(tool: SdmRegisterTool, **kwargs: Any) -> dict[str, Any]:
     payload = {
         "artifact_type": "strategy",
         "name": "inverse vol weighting",
         "universe": "equity_hk",
         **kwargs,
     }
-    envelope = json.loads(tool.execute(**payload))
+    return json.loads(tool.execute(**payload))
+
+
+def _register(tool: SdmRegisterTool, **kwargs: Any) -> dict[str, Any]:
+    envelope = _execute(tool, **kwargs)
     assert envelope["status"] == "ok", envelope
     return envelope["artifact"]
 
@@ -93,3 +99,38 @@ def test_rule_fields_are_in_the_tool_schema(tool: SdmRegisterTool) -> None:
 
     for field in RULE_FIELDS:
         assert props[field]["type"] == "string", f"{field} missing from the schema"
+
+
+
+def test_decay_horizon_round_trips(tool: SdmRegisterTool) -> None:
+    artifact = _register(tool, decay_horizon=60)
+
+    assert artifact["decay_horizon"] == 60
+
+
+def test_omitted_decay_horizon_keeps_the_artifact_default(
+    tool: SdmRegisterTool,
+) -> None:
+    """Forwarding an absent value would store a null horizon instead."""
+    default = next(f.default for f in fields(Artifact) if f.name == "decay_horizon")
+
+    artifact = _register(tool)
+
+    assert artifact["decay_horizon"] == default
+
+
+@pytest.mark.parametrize("horizon", [0, -5, "abc", 2.5, True])
+def test_invalid_decay_horizon_is_refused(
+    tool: SdmRegisterTool, horizon: object
+) -> None:
+    envelope = _execute(tool, decay_horizon=horizon)
+
+    assert envelope["status"] == "error"
+    assert "decay_horizon" in envelope["error"]
+
+def test_decay_horizon_is_in_the_tool_schema(tool: SdmRegisterTool) -> None:
+    """A field the schema does not expose cannot be written by an agent."""
+    props = tool.parameters["properties"]
+
+    assert props["decay_horizon"]["type"] == "integer"
+    assert props["decay_horizon"]["minimum"] == 1
