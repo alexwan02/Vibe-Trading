@@ -284,6 +284,36 @@ describe("RunDetail page", () => {
     expect(firstRowTime()).toBe(allTrades[0].timestamp);
   });
 
+  it("lists trade symbols in code order whichever way the trades are sorted", async () => {
+    apiMock.getRun.mockResolvedValue({
+      status: "success",
+      run_id: "multi",
+      prompt: "Multi symbol run",
+      artifacts_trades_csv: [
+        { timestamp: "2024-01-01", code: "00700.HK", side: "BUY" },
+        { timestamp: "2024-01-02", code: "02328.HK", side: "BUY" },
+        { timestamp: "2024-01-03", code: "00005.HK", side: "BUY" },
+        { timestamp: "2024-01-04", code: "00700.HK", side: "SELL" },
+      ],
+    });
+    apiMock.getRunCode.mockResolvedValue({});
+
+    renderRunDetail("/runs/multi");
+    await screen.findByText("Multi symbol run");
+    fireEvent.click(screen.getByRole("tab", { name: "Trades" }));
+
+    const symbolOptions = () => within(screen.getByRole("combobox", { name: "Symbol" }))
+      .getAllByRole("option")
+      .map((option) => option.textContent);
+    const expected = ["All symbols", "00005.HK", "00700.HK", "02328.HK"];
+    expect(symbolOptions()).toEqual(expected);
+
+    const timeHeader = screen.getByRole("columnheader", { name: "Time" });
+    fireEvent.click(within(timeHeader).getByRole("button"));
+
+    expect(symbolOptions()).toEqual(expected);
+  });
+
   it("pads and scroll-wraps run-card key/value and artifact tables", async () => {
     apiMock.getRun.mockResolvedValue({
       status: "success",

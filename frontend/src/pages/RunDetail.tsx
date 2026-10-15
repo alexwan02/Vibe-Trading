@@ -1026,7 +1026,9 @@ function TradesTab({ run }: { run: RunData }) {
   ), [source, sortDesc]);
   if (trades.length === 0) return <div className="p-8 text-muted-foreground text-sm">{i18n.t("runDetail.noTrades")}</div>;
 
-  const symbols = [...new Set(trades.map((tr) => tr.code).filter(Boolean))];
+  // Same code order as the Chart tab's symbol list, so a symbol sits in the
+  // same place on both tabs and does not move when the time order flips.
+  const symbols = [...new Set(trades.map((tr) => tr.code).filter(Boolean))].sort();
   const hasPnl = trades.some((tr) => parseTradeNumber(tr.pnl) != null);
   const hasReturnPct = trades.some((tr) => parseTradeNumber(tr.return_pct) != null);
   const hasHoldingDays = trades.some((tr) => (tr.holding_days ?? "") !== "");
